@@ -1,0 +1,94 @@
+{
+  "$id": "./ai_summary.schema.json",
+  "title": "AI Dev Bot — Per-File AI Summary (v2, structured-outputs)",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "what": {
+      "description": "1–2 sentences describing what the file does (headline responsibility).",
+      "type": "string"
+    },
+    "why": {
+      "description": "1–2 sentences explaining why this file exists and the user-facing value.",
+      "type": "string"
+    },
+    "how": {
+      "description": "1–3 short sentences summarizing the key approach or flow.",
+      "type": "string"
+    },
+    "public_api": {
+      "description": "Names of public functions, classes, routes, or commands this file exposes.",
+      "type": "array",
+      "items": { "type": "string" },
+      "maxItems": 50
+    },
+    "key_deps": {
+      "description": "Important internal modules or external libraries this file depends on.",
+      "type": "array",
+      "items": { "type": "string" },
+      "maxItems": 50
+    },
+    "risks": {
+      "description": "Short phrases describing notable risks, edge cases, or fragility. Use an empty array [] if nothing stands out.",
+      "type": "array",
+      "items": { "type": "string" },
+      "maxItems": 32
+    },
+    "tests": {
+      "description": "Test modules, paths, or brief notes about test coverage for this file. Use an empty array [] if none are visible.",
+      "type": "array",
+      "items": { "type": "string" },
+      "maxItems": 50
+    },
+    "notes": {
+      "description": "One short, actionable improvement idea or \"—\" if none.",
+      "type": "string"
+    },
+    "assumptions_invariants": {
+      "description": "Important assumptions or invariants the file relies on. Use an empty array [] if none are visible.",
+      "type": "array",
+      "items": { "type": "string" },
+      "maxItems": 32
+    },
+    "io_contracts": {
+      "description": "Summarized input/output/error/side-effect contracts for the main public API.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "maxItems": 50
+        },
+        "outputs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "maxItems": 50
+        },
+        "errors": {
+          "type": "array",
+          "items": { "type": "string" },
+          "maxItems": 50
+        },
+        "side_effects": {
+          "type": "array",
+          "items": { "type": "string" },
+          "maxItems": 50
+        }
+      },
+      "required": ["inputs", "outputs", "errors", "side_effects"]
+    }
+  },
+  "required": [
+    "what",
+    "why",
+    "how",
+    "public_api",
+    "key_deps",
+    "risks",
+    "tests",
+    "notes",
+    "assumptions_invariants",
+    "io_contracts"
+  ]
+}

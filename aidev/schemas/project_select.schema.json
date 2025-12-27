@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "./project_select.schema.json",
+  "title": "ProjectSelect (Structured Outputs compatible)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["project_path"],
+  "properties": {
+    "project_path": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Repo-relative or absolute project path. Use null only if the caller allows 'no selection'."
+    }
+  }
+}

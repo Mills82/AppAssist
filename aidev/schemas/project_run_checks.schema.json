@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "./project_run_checks.schema.json",
+  "title": "ProjectRunChecks",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["project_path"],
+  "properties": {
+    "project_path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "description": "Absolute or repo-relative path to the project root to run checks against."
+    }
+  }
+}

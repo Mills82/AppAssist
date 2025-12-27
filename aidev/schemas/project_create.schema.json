@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "./project_create.schema.json",
+  "title": "ProjectCreatePayload (Structured Outputs compatible)",
+  "description": "Unified schema compatible with OpenAI Structured Outputs. Supports both legacy and v2 payloads via payload_kind; non-applicable branches should be null.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "payload_kind",
+    "title",
+    "short_description",
+    "target_platforms",
+    "scaffold_kind",
+    "metadata",
+    "files",
+    "created_files",
+    "follow_up_questions",
+    "project_name",
+    "base_dir"
+  ],
+  "properties": {
+    "payload_kind": {
+      "type": "string",
+      "enum": ["legacy", "v2"],
+      "description": "Discriminator. 'legacy' uses files.app_descrip.txt + files.project_description.md. 'v2' uses scaffold_kind plus created_files or follow_up_questions."
+    },
+
+    "title": { "type": "string", "minLength": 1, "maxLength": 150 },
+    "short_description": { "type": "string", "minLength": 1, "maxLength": 800 },
+
+    "target_platforms": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "string",
+        "enum": ["web", "ios", "android", "desktop", "cli", "api", "other"]
+      }
+    },
+
+    "scaffold_kind": {
+      "type": ["string", "null"],
+      "enum": ["minimal", "full", null],
+      "description": "v2 only. For legacy payloads set null."
+    },
+
+    "metadata": {
+      "type": ["object", "null"],
+      "description": "Optional v2 metadata. For legacy payloads set null.",
+      "additionalProperties": false,
+      "required": ["runtime", "language", "package_manager", "dependencies"],
+      "properties": {
+        "runtime": { "type": ["string", "null"] },
+        "language": { "type": ["string", "null"] },
+        "package_manager": { "type": ["string", "null"] },
+        "dependencies": {
+          "type": ["array", "null"],
+          "items": { "type": "string" },
+          "maxItems": 200
+        }
+      }
+    },
+
+    "files": {
+      "type": ["object", "null"],
+      "description": "Legacy only. For v2 payloads set null.",
+      "additionalProperties": false,
+      "required": ["app_descrip.txt", "project_description.md"],
+      "properties": {
+        "app_descrip.txt": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 10000,
+          "description": "Plain English project summary (≤ ~300 words). No markdown."
+        },
+        "project_description.md": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 30000,
+          "description": "Markdown project description (~400–800 words) with specific sections."
+        }
+      }
+    },
+
+    "created_files": {
+      "type": ["array", "null"],
+      "description": "v2 only. For legacy payloads set null. If present, should usually have >= 2 items for full scaffolds.",
+      "items": { "$ref": "./file_edit.schema.json" }
+    },
+
+    "follow_up_questions": {
+      "type": ["array", "null"],
+      "description": "v2 only. For legacy payloads set null. If present, ask user clarifying questions instead of generating files.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "question", "required"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "question": { "type": "string", "minLength": 1 },
+          "required": { "type": "boolean" }
+        }
+      },
+      "maxItems": 20
+    },
+
+    "project_name": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Optional internal project name/slug. Use null if not provided."
+    },
+
+    "base_dir": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Optional base directory (repo-relative). Use null if not provided."
+    }
+  }
+}

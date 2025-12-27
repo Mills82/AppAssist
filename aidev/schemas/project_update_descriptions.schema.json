@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "./project_update_descriptions.schema.json",
+  "title": "ProjectUpdateDescriptions",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["app_description"],
+  "properties": {
+    "app_description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 30000,
+      "description": "Human-authored project description stored in app_descrip.txt"
+    }
+  }
+}

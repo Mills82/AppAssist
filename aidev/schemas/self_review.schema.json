@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "./self_review.schema.json",
+  "title": "AI Dev Bot — SelfReview (Structured Outputs compatible)",
+  "description": "Structured consistency review for a single recommendation across all changed files. Compatible with OpenAI Structured Outputs (no anyOf/oneOf/allOf/not).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "rec_id",
+    "overall_status",
+    "decisions",
+    "cross_file_notes_delta",
+    "warnings",
+    "file_update_requests"
+  ],
+  "properties": {
+    "rec_id": {
+      "type": "string",
+      "description": "Recommendation identifier this review applies to (e.g., 'rec-1').",
+      "minLength": 1,
+      "maxLength": 200
+    },
+
+    "overall_status": {
+      "type": "string",
+      "description": "High-level outcome of the review.",
+      "enum": ["ok", "warnings", "needs_followups"]
+    },
+
+    "decisions": {
+      "type": "array",
+      "description": "Design decisions that resolve ambiguous choices. Use [] if none.",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "value", "rationale"],
+        "properties": {
+          "key": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "value": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "rationale": { "type": "string", "minLength": 1, "maxLength": 4000 }
+        }
+      }
+    },
+
+    "cross_file_notes_delta": {
+      "type": "object",
+      "description": "Additive-only updates implied by diffs. Use empty arrays when none.",
+      "additionalProperties": false,
+      "required": [
+        "changed_interfaces_add",
+        "new_identifiers_add",
+        "deprecated_identifiers_add",
+        "followup_requirements_add"
+      ],
+      "properties": {
+        "changed_interfaces_add": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 2000 },
+          "maxItems": 200
+        },
+        "new_identifiers_add": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 2000 },
+          "maxItems": 500
+        },
+        "deprecated_identifiers_add": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 2000 },
+          "maxItems": 500
+        },
+        "followup_requirements_add": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 4000 },
+          "maxItems": 200
+        }
+      }
+    },
+
+    "warnings": {
+      "type": "array",
+      "description": "List of cross-file or per-file issues discovered during the review. Use [] if none.",
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "message",
+          "files_involved",
+          "related_identifiers",
+          "severity",
+          "evidence"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "Short machine-friendly label for this warning.",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable explanation of the issue and why it matters.",
+            "minLength": 1,
+            "maxLength": 10000
+          },
+          "files_involved": {
+            "type": "array",
+            "description": "Repo-relative paths for files involved in this warning.",
+            "items": { "type": "string", "minLength": 1, "maxLength": 500 },
+            "maxItems": 100
+          },
+          "related_identifiers": {
+            "type": "array",
+            "description": "Identifiers related to this warning (function names, flags, etc.).",
+            "items": { "type": "string", "minLength": 1, "maxLength": 500 },
+            "maxItems": 200
+          },
+          "severity": {
+            "type": "string",
+            "description": "Importance of this warning.",
+            "enum": ["low", "medium", "high"]
+          },
+          "evidence": {
+            "type": "array",
+            "description": "Evidence entries anchored to exact diff snippets. Use [] if none.",
+            "maxItems": 50,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "diff_anchor", "why_it_matters"],
+              "properties": {
+                "path": { "type": "string", "minLength": 1, "maxLength": 500 },
+                "diff_anchor": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "why_it_matters": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "file_update_requests": {
+      "type": "array",
+      "description": "Concrete follow-up edit tasks that should be scheduled before final approval. Use [] if none.",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "reason",
+          "instructions",
+          "related_identifiers",
+          "severity"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Repo-relative path of the file that should be edited again.",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "reason": {
+            "type": "string",
+            "description": "Short explanation of why this follow-up is needed.",
+            "minLength": 1,
+            "maxLength": 10000
+          },
+          "instructions": {
+            "type": "array",
+            "description": "Concrete, imperative steps for the follow-up edit.",
+            "minItems": 1,
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            }
+          },
+          "related_identifiers": {
+            "type": "array",
+            "description": "Identifiers central to this follow-up. Use [] if none.",
+            "maxItems": 200,
+            "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+          },
+          "severity": {
+            "type": "string",
+            "description": "How important this follow-up is to meet the recommendation's goals.",
+            "enum": ["low", "medium", "high"]
+          }
+        }
+      }
+    }
+  }
+}

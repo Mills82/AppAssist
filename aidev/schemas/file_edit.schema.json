@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "./file_edit.schema.json",
+  "title": "AI Dev Bot — FileEdit (v5, structured-outputs compatible)",
+  "description": "Canonical contract between the LLM and Orchestrator/UI for a single-file edit.\n\nStructured Outputs notes:\n- All fields are required (nullable where logically optional).\n- Composition keywords like `not` are not supported.\n- Use `edit_kind` as the discriminator and validate the exclusivity rule in code.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Repo-relative path to the file to edit. Must not be absolute or escape the project root."
+    },
+
+    "rec_id": {
+      "type": ["string", "null"],
+      "description": "Optional recommendation identifier that this edit belongs to (e.g., 'rec-1')."
+    },
+
+    "is_new": {
+      "type": ["boolean", "null"],
+      "description": "If true, indicates this FileEdit creates a new file rather than modifying an existing one."
+    },
+
+    "edit_kind": {
+      "type": "string",
+      "description": "Discriminator for which edit payload is active. Orchestrator must enforce that the matching field is non-null and the others are null.",
+      "enum": ["full", "patch_unified"]
+    },
+
+    "content": {
+      "type": ["string", "null"],
+      "description": "Full file contents after applying the edit. Used when edit_kind == 'full'."
+    },
+
+    "patch_unified": {
+      "type": ["string", "null"],
+      "description": "Unified diff (LF newlines only) against the CURRENT contents of this file in the workspace. Used when edit_kind == 'patch_unified'."
+    },
+
+    "summary": {
+      "type": "string",
+      "description": "Short human-readable explanation of what changed and why. Shown next to the diff in the UI."
+    },
+
+    "cross_file_notes": {
+      "type": "object",
+      "description": "Structured notes capturing cross-file implications of this edit for the same recommendation (changed interfaces, new/deprecated identifiers, and concrete follow-up requirements in other files).",
+      "additionalProperties": false,
+      "properties": {
+        "changed_interfaces": {
+          "type": "array",
+          "description": "New or changed public contracts that other files must respect (e.g., API routes, payloads, events, schemas, DOM structure, component props).",
+          "items": { "type": "string" }
+        },
+        "new_identifiers": {
+          "type": "array",
+          "description": "Names of new identifiers that other files may need to use or respect (e.g., DOM IDs/classes, function names, config keys, feature flags, event names).",
+          "items": { "type": "string" }
+        },
+        "deprecated_identifiers": {
+          "type": "array",
+          "description": "Identifiers that should be treated as legacy or scheduled for removal (e.g., old DOM IDs, fields, flags, routes).",
+          "items": { "type": "string" }
+        },
+        "followup_requirements": {
+          "type": "array",
+          "description": "Concrete follow-up edits required in other files to fully realize this recommendation (e.g., updating callers, adding CSS or tests, wiring new events).",
+          "items": { "type": "string" }
+        }
+      },
+      "required": [
+        "changed_interfaces",
+        "new_identifiers",
+        "deprecated_identifiers",
+        "followup_requirements"
+      ]
+    },
+
+    "details": {
+      "type": ["object", "null"],
+      "description": "Optional sub-object for additional metadata about this edit.",
+      "additionalProperties": false,
+      "properties": {
+        "cross_file_notes": {
+          "type": "object",
+          "description": "Optional secondary location for cross-file notes (kept for backwards compatibility). Prefer top-level cross_file_notes.",
+          "additionalProperties": false,
+          "properties": {
+            "changed_interfaces": { "type": "array", "items": { "type": "string" } },
+            "new_identifiers": { "type": "array", "items": { "type": "string" } },
+            "deprecated_identifiers": { "type": "array", "items": { "type": "string" } },
+            "followup_requirements": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": [
+            "changed_interfaces",
+            "new_identifiers",
+            "deprecated_identifiers",
+            "followup_requirements"
+          ]
+        }
+      },
+      "required": ["cross_file_notes"]
+    }
+  },
+
+  "required": [
+    "path",
+    "rec_id",
+    "is_new",
+    "edit_kind",
+    "content",
+    "patch_unified",
+    "summary",
+    "cross_file_notes",
+    "details"
+  ]
+}

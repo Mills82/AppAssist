@@ -1,0 +1,264 @@
+/* clients/web/app/globals.css
+   Global Tailwind entrypoint and minimal global styles for the Next.js app.
+   Includes Tailwind directives plus a few design tokens and helper classes used by the scaffold.
+*/
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens */
+:root {
+  --bg: #0f172a; /* slate-900 */
+  --panel: #0b1220;
+  --muted: #94a3b8;
+  --accent: #60a5fa; /* sky-400 */
+  --accent-600: #0284c7;
+  --glass: rgba(255,255,255,0.04);
+  --radius: 0.5rem;
+  --max-width: 1100px;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+}
+
+/* Base resets and app layout helpers */
+html, body, #__next {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--bg);
+  color: #e6eef8;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.45;
+}
+
+/* Accessibility focus ring friendly */
+:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(96,165,250,0.18);
+  border-radius: 0.25rem;
+}
+
+/* App container */
+.app-container {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+/* Sidebar & chat window helpers used in scaffold */
+.sidebar {
+  width: 260px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  color: var(--muted);
+}
+
+/* Slim variant for collapsed sidebar */
+.sidebar--collapsed {
+  width: 64px;
+}
+
+/* Chat window area */
+.chat-window {
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+  border-radius: var(--radius);
+  padding: 1rem;
+  min-height: 420px;
+}
+
+/* Mode chip */
+.mode-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+  background: rgba(255,255,255,0.03);
+  border-radius: 9999px;
+  color: var(--accent);
+  border: 1px solid rgba(96,165,250,0.12);
+}
+
+/* Approvals badge */
+.badge-approvals {
+  display: inline-block;
+  background: rgba(254, 202, 202, 0.06);
+  color: #fecaca;
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.375rem;
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+/* Recent runs list */
+.recent-runs {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.recent-runs li {
+  padding: 0.5rem 0.25rem;
+  border-bottom: 1px solid rgba(255,255,255,0.02);
+  font-size: 0.9rem;
+}
+
+/* Utility: subtle glass card */
+.card {
+  background: var(--glass);
+  border: 1px solid rgba(255,255,255,0.04);
+  padding: 1rem;
+  border-radius: var(--radius);
+}
+
+/* Responsive tweaks */
+@media (max-width: 768px) {
+  .sidebar {
+    display: none;
+  }
+  .sidebar--collapsed {
+    display: none;
+  }
+}
+
+/* Example usage (import from your root layout):
+   import './globals.css';
+   Then apply classes like: <div className='app-container'> <aside className='sidebar'>...</aside> <main className='chat-window'>...</main> </div>
+*/
+
+/* --------------------------------------------------------------------------
+   RunTimeline styles
+   Public class names consumed by clients/web/components/RunTimeline.tsx:
+     - .run-timeline
+     - .run-stage
+     - .run-stage--active
+     - .run-stage--done
+     - .run-stage--error
+     - .run-progress
+     - .run-progress__track
+     - .run-progress__fill
+     - .run-error-banner
+
+   Purpose: lightweight, theme-aware styles for a horizontal stage timeline,
+   thin progress indicator, and an inline error banner. Designed to reuse
+   existing design tokens and remain low-specificity so it composes well
+   with the app layout.
+   -------------------------------------------------------------------------- */
+
+.run-timeline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 0.25rem 0;
+}
+
+/* Each stage badge */
+.run-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.9rem;
+  border-radius: calc(var(--radius) - 0.125rem);
+  background: rgba(255,255,255,0.02);
+  color: var(--muted);
+  border: 1px solid rgba(255,255,255,0.02);
+  min-width: 48px;
+  justify-content: center;
+}
+
+/* Active stage (current) */
+.run-stage--active {
+  background: rgba(96,165,250,0.12);
+  color: var(--accent);
+  border-color: rgba(96,165,250,0.16);
+  box-shadow: 0 1px 0 rgba(96,165,250,0.04);
+}
+
+/* Completed stage */
+.run-stage--done {
+  background: rgba(96,165,250,0.06);
+  color: var(--accent-600);
+  border-color: rgba(96,165,250,0.06);
+}
+
+/* Error stage */
+.run-stage--error {
+  background: rgba(248,113,113,0.08);
+  color: #f87171;
+  border-left: 3px solid rgba(248,113,113,0.28);
+}
+
+/* Make stages keyboard-focusable if treated as interactive; prefer role=button */
+.run-stage[role="button"] {
+  cursor: pointer;
+}
+.run-stage[role="button"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(96,165,250,0.12);
+  border-radius: calc(var(--radius) - 0.125rem);
+}
+
+/* Thin progress bar that can be updated by setting --progress inline or via style */
+.run-progress {
+  flex: 1 1 180px;
+  margin-left: 0.75rem;
+  margin-right: 0.5rem;
+}
+
+.run-progress__track {
+  background: rgba(255,255,255,0.03);
+  border-radius: 999px;
+  height: 6px;
+  overflow: hidden;
+}
+
+.run-progress__fill {
+  height: 100%;
+  width: var(--progress, 0%); /* parent/component may set --progress: 42%; */
+  max-width: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-600));
+  transition: width 280ms ease;
+  border-radius: 999px;
+}
+
+/* Error banner shown inline above/below the timeline when a run fails */
+.run-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(248,113,113,0.06);
+  color: #fecaca;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid rgba(248,113,113,0.28);
+  border-radius: calc(var(--radius) / 1.6);
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+/* Accessibility helpers: hide decorative elements from assistive tech */
+.run-timeline [aria-hidden="true"] {
+  pointer-events: none;
+}
+
+/* Responsive: allow timeline to wrap on very small screens */
+@media (max-width: 480px) {
+  .run-timeline {
+    flex-wrap: wrap;
+    gap: 0.5rem 0.35rem;
+    align-items: flex-start;
+  }
+  .run-progress {
+    width: 100%;
+    order: 99; /* push progress below stages on narrow screens */
+    margin-left: 0;
+    margin-right: 0;
+  }
+}

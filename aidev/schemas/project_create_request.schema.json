@@ -1,0 +1,69 @@
+{
+  "title": "ProjectCreateRequest",
+  "description": "Incoming payload to create a new project from a brief or continue a previously-started flow.\n\nStructured Outputs compatible version:\n- Uses request_type as a discriminator instead of oneOf.\n- All keys are required; optional values are represented with null.\n- answers is only supported in array form (list of {key,value}); legacy object-map answers should be converted to this form by the server before calling the model.\n\nRules (validate in application code):\n- request_type = \"initial\": brief must be non-null; session_id/session_token/answers/apply should be null.\n- request_type = \"follow_up\": answers must be non-null and either session_id or session_token must be non-null; brief/project_name/base_dir should be null.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "request_type": {
+      "type": "string",
+      "enum": ["initial", "follow_up"],
+      "description": "Discriminator for which request shape this represents."
+    },
+
+    "brief": {
+      "type": ["string", "null"],
+      "description": "Initial create request brief. Must be non-null when request_type=\"initial\"."
+    },
+    "project_name": {
+      "type": ["string", "null"],
+      "description": "Optional project name for initial create requests."
+    },
+    "base_dir": {
+      "type": ["string", "null"],
+      "description": "Optional base directory for initial create requests."
+    },
+
+    "session_id": {
+      "type": ["string", "null"],
+      "description": "Follow-up session id (preferred). Must be non-null or session_token must be non-null when request_type=\"follow_up\"."
+    },
+    "session_token": {
+      "type": ["string", "null"],
+      "description": "Legacy follow-up session token. Must be non-null or session_id must be non-null when request_type=\"follow_up\"."
+    },
+    "apply": {
+      "type": ["boolean", "null"],
+      "description": "Optional follow-up flag to request immediate application of answers."
+    },
+
+    "answers": {
+      "type": ["array", "null"],
+      "description": "Follow-up answers as an array of {key,value}. Must be non-null when request_type=\"follow_up\".",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Answer key (question id / field name)."
+          },
+          "value": {
+            "type": "string",
+            "description": "Answer value."
+          }
+        },
+        "required": ["key", "value"]
+      }
+    }
+  },
+  "required": [
+    "request_type",
+    "brief",
+    "project_name",
+    "base_dir",
+    "session_id",
+    "session_token",
+    "apply",
+    "answers"
+  ]
+}

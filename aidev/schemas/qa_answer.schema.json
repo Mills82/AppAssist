@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "./qa_answer.schema.json",
+  "title": "Q&A Answer",
+  "type": "object",
+  "description": "Machine-readable schema for LLM Q&A responses produced by the assistant.",
+  "additionalProperties": false,
+  "required": ["answer", "file_refs", "follow_ups"],
+  "properties": {
+    "answer": {
+      "type": "string",
+      "description": "Natural-language answer to the user's question. May include short code snippets, but no machine-editable patch formats.",
+      "minLength": 1,
+      "maxLength": 60000
+    },
+    "file_refs": {
+      "type": "array",
+      "description": "List of cited files with a one-line excerpt/snippet and optional line range.",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "snippet", "start_line", "end_line"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Repository-relative file path.",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "snippet": {
+            "type": "string",
+            "description": "One-line excerpt or short snippet showing context.",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "start_line": {
+            "type": ["integer", "null"],
+            "minimum": 1,
+            "description": "Optional starting line number (1-based). Use null when unknown."
+          },
+          "end_line": {
+            "type": ["integer", "null"],
+            "minimum": 1,
+            "description": "Optional ending line number (1-based). Use null when unknown. If provided, should be >= start_line."
+          }
+        }
+      }
+    },
+    "follow_ups": {
+      "type": "array",
+      "description": "0-3 suggested follow-up questions.",
+      "maxItems": 3,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 300
+      }
+    }
+  }
+}

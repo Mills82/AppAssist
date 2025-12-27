@@ -1,0 +1,25 @@
+{
+  "project_roots": ["./"],
+  "include": [],
+  "exclude": [
+    "**/.aidev/**",
+    "**/.git/**", "**/.hg/**", "**/.svn/**",
+    "**/node_modules/**", "**/bower_components/**",
+    "**/.next/**", "**/.nuxt/**", "**/.svelte-kit/**", "**/.turbo/**",
+    "**/dist/**", "**/build/**", "**/out/**", "**/.output/**",
+    "**/.gradle/**", "**/target/**", "**/.dart_tool/**",
+    "**/.venv/**", "**/venv/**", "**/__pycache__/**",
+    "**/.mypy_cache/**", "**/.ruff_cache/**", "**/.pytest_cache/**", "**/.cache/**",
+    "**/.idea/**", "**/.vscode/**",
+    "**/Pods/**", "**/DerivedData/**",
+    "**/coverage/**", "**/htmlcov/**",
+    "**/*.log", "*.log",
+    "**/.env", "**/.env.*", ".env", ".env.*",
+    "**/coverage/**",
+    "**/.eslintcache",
+    "**/.pnpm-store/**",
+    "**/.yarn/**",
+    "**/*.map"
+  ],
+  "deployment": "gpt-5-mini"
+}

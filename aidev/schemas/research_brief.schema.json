@@ -1,0 +1,266 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aidev/schemas/research_brief.schema.json",
+  "title": "ResearchBrief",
+  "description": "ResearchBrief produced by the DeepResearchEngine. Claims must cite evidence items via ev_id. Unknown properties are disallowed at all object levels.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "query",
+    "subquestions",
+    "evidence",
+    "findings",
+    "impact_surface",
+    "suggested_actions",
+    "gaps",
+    "meta"
+  ],
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Original (or normalized) research query that produced this brief",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "subquestions": {
+      "type": "array",
+      "description": "List of subquestions addressed in this brief (strings).",
+      "minItems": 0,
+      "maxItems": 64,
+      "items": { "type": "string", "minLength": 1, "maxLength": 4000 }
+    },
+    "evidence": {
+      "type": "array",
+      "description": "Evidence items collected deterministically during gather phases. Each entry must be an EvidenceItem.",
+      "minItems": 0,
+      "maxItems": 500,
+      "items": { "$ref": "#/$defs/EvidenceItem" }
+    },
+    "findings": {
+      "type": "array",
+      "description": "Synthesized findings. Evidence-backed findings should include evidence_refs. If insufficient_evidence is true, evidence_refs should be empty and gap_refs should be non-empty (enforced by higher-level validation, not JSON Schema here).",
+      "minItems": 0,
+      "maxItems": 300,
+      "items": { "$ref": "#/$defs/Finding" }
+    },
+    "impact_surface": {
+      "type": "array",
+      "description": "Potential impact surface: topics and likely dependents with cited evidence.",
+      "minItems": 0,
+      "maxItems": 300,
+      "items": { "$ref": "#/$defs/ImpactSurfaceItem" }
+    },
+    "suggested_actions": {
+      "type": "array",
+      "description": "Concrete suggested actions, targeted paths and supporting evidence. If speculative is true, evidence_refs should be empty and gap_refs should be non-empty (enforced by higher-level validation, not JSON Schema here).",
+      "minItems": 0,
+      "maxItems": 300,
+      "items": { "$ref": "#/$defs/SuggestedAction" }
+    },
+    "gaps": {
+      "type": "array",
+      "description": "Identified gaps and suggested next queries to close them.",
+      "minItems": 0,
+      "maxItems": 300,
+      "items": { "$ref": "#/$defs/GapItem" }
+    },
+    "meta": {
+      "type": "object",
+      "description": "Metadata about the run and budget/diagnostics. Extensibility is provided via meta.extra key/value pairs.",
+      "additionalProperties": false,
+      "required": ["cache_key", "repo_version", "llm_calls_used", "budget", "errors", "extra"],
+      "properties": {
+        "cache_key": {
+          "type": "string",
+          "description": "Deterministic cache key for this request.",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "repo_version": {
+          "type": "string",
+          "description": "Repository version identifier (git HEAD SHA preferred).",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "llm_calls_used": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of LLM calls consumed."
+        },
+        "budget": { "$ref": "#/$defs/Budget" },
+        "errors": {
+          "type": "array",
+          "description": "Non-fatal errors, warnings, or notes encountered during the run.",
+          "minItems": 0,
+          "maxItems": 200,
+          "items": { "type": "string", "minLength": 1, "maxLength": 8000 }
+        },
+        "extra": {
+          "type": "array",
+          "description": "Optional extensible metadata as explicit key/value pairs (for forward/backward compatibility without allowing unknown object properties).",
+          "minItems": 0,
+          "maxItems": 200,
+          "items": { "$ref": "#/$defs/KeyValue" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "EvId": {
+      "type": "string",
+      "description": "Canonical evidence identifier used across the brief (e.g. ev_01). Must be non-empty and use the numeric canonical format.",
+      "pattern": "^ev_[0-9]{2,}$",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "KeyValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "value"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "value": { "type": "string", "minLength": 0, "maxLength": 20000 }
+      }
+    },
+    "EvidenceItem": {
+      "type": "object",
+      "description": "Deterministic evidence item gathered during Phase 2 (GATHER).",
+      "additionalProperties": false,
+      "required": ["ev_id", "path", "kind", "lines", "excerpt", "why", "score"],
+      "properties": {
+        "ev_id": { "$ref": "#/$defs/EvId" },
+        "path": { "type": "string", "description": "Repo-relative path for the evidence.", "minLength": 1, "maxLength": 8000 },
+        "kind": { "type": "string", "description": "Kind of evidence (search_hit | excerpt | symbol_def | symbol_ref | dep_edge | entrypoint | config_ref, etc).", "minLength": 1, "maxLength": 2000 },
+        "lines": { "type": ["string", "null"], "description": "Optional line span like 'L12-L40'.", "maxLength": 200 },
+        "excerpt": { "type": ["string", "null"], "description": "Optional bounded excerpt text.", "maxLength": 20000 },
+        "why": { "type": ["string", "null"], "description": "Optional explanation of why this evidence is relevant.", "maxLength": 8000 },
+        "score": { "type": ["number", "null"], "description": "Optional scoring of the evidence (higher is more relevant)." }
+      }
+    },
+    "Finding": {
+      "type": "object",
+      "description": "A synthesized finding. If insufficient_evidence is true, evidence_refs should be empty and gap_refs should be non-empty (validated by higher-level logic).",
+      "additionalProperties": false,
+      "required": ["title", "detail", "confidence", "insufficient_evidence", "evidence_refs", "gap_refs"],
+      "properties": {
+        "title": { "type": "string", "description": "Short title for the finding.", "minLength": 1, "maxLength": 4000 },
+        "detail": { "type": "string", "description": "Detailed explanation of the finding.", "minLength": 1, "maxLength": 40000 },
+        "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1, "description": "Confidence score between 0 and 1 (inclusive). Nullable when not applicable." },
+        "insufficient_evidence": { "type": "boolean", "description": "True if evidence was insufficient to support a grounded finding." },
+        "evidence_refs": {
+          "type": "array",
+          "description": "References to EvidenceItem.ev_id that support this finding. Should be empty when insufficient_evidence is true.",
+          "minItems": 0,
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/EvId" }
+        },
+        "gap_refs": {
+          "type": "array",
+          "description": "References to one or more gaps entries (by string). Should be non-empty when insufficient_evidence is true.",
+          "minItems": 0,
+          "maxItems": 50,
+          "items": { "type": "string", "minLength": 1, "maxLength": 4000 }
+        }
+      }
+    },
+    "SuggestedAction": {
+      "type": "object",
+      "description": "A concrete suggested action. If speculative is true, evidence_refs should be empty and gap_refs should be non-empty (validated by higher-level logic).",
+      "additionalProperties": false,
+      "required": ["action", "target_paths", "reason", "speculative", "evidence_refs", "gap_refs"],
+      "properties": {
+        "action": { "type": "string", "description": "Action to take.", "minLength": 1, "maxLength": 12000 },
+        "target_paths": {
+          "type": "array",
+          "description": "Repo-relative paths targeted by this action.",
+          "minItems": 0,
+          "maxItems": 200,
+          "items": { "type": "string", "minLength": 1, "maxLength": 8000 }
+        },
+        "reason": { "type": "string", "description": "Rationale for the action.", "minLength": 1, "maxLength": 40000 },
+        "speculative": { "type": "boolean", "description": "True if this action is a speculative next step and not evidence-backed." },
+        "evidence_refs": {
+          "type": "array",
+          "description": "Evidence ev_id references supporting the suggested action. Should be empty when speculative is true.",
+          "minItems": 0,
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/EvId" }
+        },
+        "gap_refs": {
+          "type": "array",
+          "description": "References to one or more gaps entries (by string). Should be non-empty when speculative is true.",
+          "minItems": 0,
+          "maxItems": 50,
+          "items": { "type": "string", "minLength": 1, "maxLength": 4000 }
+        }
+      }
+    },
+    "ImpactSurfaceItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["topic", "likely_dependents", "evidence_refs"],
+      "properties": {
+        "topic": { "type": "string", "description": "Topic or area potentially impacted.", "minLength": 1, "maxLength": 8000 },
+        "likely_dependents": {
+          "type": "array",
+          "description": "Paths or identifiers likely to be affected by this topic.",
+          "minItems": 0,
+          "maxItems": 200,
+          "items": { "type": "string", "minLength": 1, "maxLength": 8000 }
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EvId" },
+          "minItems": 1,
+          "maxItems": 50,
+          "description": "Evidence ev_id references supporting the impact claim."
+        }
+      }
+    },
+    "GapItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gap", "next_query", "severity"],
+      "properties": {
+        "gap": { "type": "string", "description": "Description of the gap.", "minLength": 1, "maxLength": 20000 },
+        "next_query": { "type": "string", "description": "Suggested follow-up query to gather more evidence.", "minLength": 1, "maxLength": 8000 },
+        "severity": { "type": "string", "enum": ["low", "med", "high"], "description": "Severity of the gap." }
+      }
+    },
+    "Budget": {
+      "type": "object",
+      "description": "Budget numeric knobs used for this run. All fields required; use null when unknown/not set.",
+      "additionalProperties": false,
+      "required": [
+        "max_subquestions",
+        "max_evidence_items",
+        "max_files_touched",
+        "max_file_bytes",
+        "max_total_bytes",
+        "llm_calls_default",
+        "merge_strategy",
+        "merge_keys"
+      ],
+      "properties": {
+        "max_subquestions": { "type": ["integer", "null"], "minimum": 0, "description": "Maximum number of subquestions (non-negative)." },
+        "max_evidence_items": { "type": ["integer", "null"], "minimum": 0, "description": "Maximum number of evidence items to gather (non-negative)." },
+        "max_files_touched": { "type": ["integer", "null"], "minimum": 0, "description": "Maximum number of files that may be modified/touched (non-negative)." },
+        "max_file_bytes": { "type": ["integer", "null"], "minimum": 0, "description": "Maximum bytes per file to consider (non-negative)." },
+        "max_total_bytes": { "type": ["integer", "null"], "minimum": 0, "description": "Maximum total bytes across files (non-negative)." },
+        "llm_calls_default": { "type": ["integer", "null"], "minimum": 0, "description": "Default number of LLM calls allocated (non-negative)." },
+        "merge_strategy": {
+          "type": ["string", "null"],
+          "enum": ["deterministic", "override", "merge_max", "merge_min", null],
+          "description": "Merge strategy used for merging cached budget objects."
+        },
+        "merge_keys": {
+          "type": ["array", "null"],
+          "description": "Optional ordered list of numeric budget field names used as precedence keys for deterministic merge.",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": { "type": "string", "minLength": 1, "maxLength": 200 }
+        }
+      }
+    }
+  }
+}

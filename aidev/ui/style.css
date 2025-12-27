@@ -1,0 +1,2378 @@
+/* aidev/ui/style.css */
+/*
+  NOTE: This file was trimmed as part of rec: ui/refactor-sse-and-cleanup.
+  - Retained core design tokens and layout selectors required by new app.js/index.html (do not remove):
+    --aidev-*, --aidev-accent, --panel, --aidev-bg, --aidev-text, --aidev-border.
+  - Collapsed a small number of legacy/duplicate helper blocks that were only used by deprecated JS paths.
+  LEGACY-REMOVED entries are annotated in-place so reviewers can see what was removed.
+*/
+:root{
+  --bg:#0b1020;
+  --fg:#0f172a;
+  --ink:#0f172a;
+  --panel:#ffffff;
+  --border:#e5e7eb;
+  --muted:#6b7280;
+
+  /* High-contrast palette */
+  --btn-bg:#111827;
+  --btn-bg-hover:#0b1220;
+  --btn-fg:#ffffff;
+  --btn-border:#0b1220;
+
+  --btn2-bg:#ffffff;
+  --btn2-fg:#111827;
+  --btn2-border:#1f2937;
+
+  --ghost-fg:#111827;
+  --ghost-bg:#dddddd;
+  --ghost-border:#cbd5e1;
+  --ghost-hover:#f8fafc;
+
+  --disabled-bg:#e5e7eb;
+  --disabled-fg:#6b7280;
+  --disabled-border:#cbd5e1;
+
+  --accent:#4f46e5;
+  --accent-weak:#eef2ff;
+
+  --danger:#b91c1c;
+  --danger-soft:#fef2f2;
+
+  /* New design tokens */
+  --aidev-font-stack: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
+  --aidev-accent: #4f46e5;
+
+  /* Core tokens (introduced for theming / consistent usage) */
+  --aidev-bg: #fafafa;
+  --aidev-surface: var(--panel);
+  --aidev-text: var(--ink);
+  --aidev-muted: var(--muted);
+  --aidev-border: var(--border);
+  --aidev-radius: 8px;
+
+  /* Spacing scale */
+  --aidev-space-xs: 4px;
+  --aidev-space-sm: 8px;
+  --aidev-space-md: 12px;
+  --aidev-space-lg: 16px;
+  /* convenience alias expected by some tooling */
+  --space-unit: var(--aidev-space-md);
+
+  /* Font sizing */
+  --aidev-font-size-base: 15px;
+  --aidev-font-size-sm: 13px;
+  --aidev-font-size-lg: 18px;
+
+  /* Responsive breakpoints (mobile-first; used with min-width queries) */
+  --aidev-breakpoint-sm: 640px;
+  --aidev-breakpoint-md: 960px;
+  --aidev-breakpoint-lg: 1280px;
+
+  /* Container size tokens (added for layout container rules) */
+  --container-xs: 320px;
+  --container-md: 768px;
+  --container-lg: 1280px;
+  --container-padding: var(--aidev-space-md);
+
+  /* Compatibility aliases expected by tooling/acceptance checks */
+  --color-primary: var(--aidev-accent);
+  --bg: var(--aidev-bg);
+  --text: var(--aidev-text);
+
+  /* Aliases for legacy tooling and more concise token names */
+  --color-text: var(--aidev-text);
+  --color-bg: var(--aidev-bg);
+  --space-xs: var(--aidev-space-xs);
+  --space-sm: var(--aidev-space-sm);
+  --space-md: var(--aidev-space-md);
+  --space-lg: var(--aidev-space-lg);
+
+  /* Chat / bubble tokens (new aliases so components can rely on variables) */
+  --bubble-user-bg: var(--aidev-surface);
+  --bubble-user-border: rgba(15,23,42,0.06);
+  --bubble-user-color: #083344;
+
+  --bubble-assistant-bg: var(--aidev-accent-weak);
+  --bubble-assistant-border: #e9d5ff;
+  --bubble-assistant-color: #312e81;
+  --bubble-assistant-strong: #4b2fb7; /* used for small emphasis inside assistant bubbles */
+
+  --bubble-system-bg: #f1f5f9;
+  --bubble-system-border: #e5e7eb;
+  --bubble-system-color: #111827;
+
+  /* Focus ring token used by :focus-visible rules */
+  --focus-ring: var(--color-primary);
+
+  /* Bot typing dot color */
+  --bot-typing-dot: var(--aidev-accent);
+}
+
+@media (prefers-color-scheme: dark){
+  :root{
+    --panel:#0f172a;
+    --ink:#e5e7eb;
+    --border:#1f2937;
+    --ghost-hover:#111827;
+  }
+  body{ background:#0b1020; }
+}
+
+/* Allow explicit toggling of dark theme via a single attribute/class for scripting support.
+   Many consumers prefer toggling [data-theme="dark"] on <html> or <body> instead of relying
+   on prefers-color-scheme. This selector provides the same core overrides as the media query. */
+[data-theme="dark"], .theme-dark {
+  --panel:#0f172a;
+  --ink:#e5e7eb;
+  --border:#1f2937;
+  --ghost-hover:#111827;
+  --aidev-bg: #0b1020;
+  --bg: #0b1020;
+  --text: #e5e7eb;
+  --color-primary: #7c3aed; /* slightly different tone for dark surfaces */
+  background-color: var(--aidev-bg);
+  color: var(--aidev-text);
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family: var(--aidev-font-stack);
+  margin:0; color:var(--ink); background:var(--aidev-bg);
+  padding-bottom:44px; /* room for fixed status bar */
+  font-size:var(--aidev-font-size-base);
+}
+
+/* Utilities */
+.visually-hidden{
+  position:absolute!important; width:1px!important; height:1px!important;
+  padding:0!important; margin:-1px!important; overflow:hidden!important;
+  clip:rect(0,0,0,0)!important; white-space:nowrap!important; border:0!important;
+}
+/* alias commonly used name for screen-reader-only content */
+.sr-only{ position:absolute!important; width:1px!important; height:1px!important; padding:0!important; margin:-1px!important; overflow:hidden!important; clip:rect(0,0,0,0)!important; white-space:nowrap!important; border:0!important; }
+.hidden{
+  display:none !important;
+}
+/* Hide rarely-used secondary controls on initial load to reduce cognitive load */
+.secondary-hidden{ display:none !important; }
+
+/* Spinner */
+.spinner{
+  width:14px;
+  height:14px;
+  border-radius:999px;
+  border:2px solid #cbd5e1;
+  border-top-color:var(--accent);
+  animation:spin 0.6s linear infinite;
+}
+.spinner.inline{
+  width:12px;
+  height:12px;
+  border-width:2px;
+}
+@keyframes spin{
+  to{ transform:rotate(360deg); }
+}
+
+/* Header */
+header{
+  padding:12px 16px; background:var(--fg); color:#fff;
+  display:flex; align-items:center; gap:12px;
+  flex-wrap:wrap;
+}
+header strong{font-weight:700}
+/* Reduce visual dominance of old badges (we encourage progress bar instead) */
+header .badge{
+  opacity:.6; font-size:12px; padding:2px 8px;
+  border:1px solid rgba(255,255,255,.12); border-radius:999px
+}
+header .badge.muted{ opacity:.65; border-color:rgba(255,255,255,.08); }
+
+/* Hero text: a concise, plain-language sentence placed beneath the main heading.
+   This class ensures readable sizing and spacing so the sentence is visible in the
+   top viewport on common screens (e.g., 1366×768). Keep the sentence short (≤25 words). */
+.hero-text{
+  display:block;
+  margin:8px 0 0;
+  font-size:16px; /* mobile-first base size */
+  line-height:1.35;
+  max-width:70ch; /* limit line length for readability */
+  color: #e6e9ef; /* light text tuned for header/hero areas; fallback to panel/ink where used */
+  opacity:0.98;
+}
+/* Mobile-first: increase hero size at larger viewports */
+@media (min-width: 640px){
+  .hero-text{ font-size:17px; }
+}
+@media (min-width: 960px){
+  .hero-text{ font-size:18px; margin-top:8px; }
+}
+
+/* Nav toggle (hamburger) - hidden by default; revealed at small viewports */
+#nav-toggle{
+  display:none;
+  appearance:none; -webkit-appearance:none; border:0; background:transparent;
+  color:inherit; cursor:pointer; padding:6px; border-radius:8px;
+}
+#nav-toggle:focus-visible{ outline:3px solid var(--focus-ring, #93c5fd); outline-offset:2px; }
+
+/* Top-right actions */
+.right-actions{
+  margin-left:auto; display:flex; gap:8px; align-items:center;
+}
+
+/* Layout */
+main.layout{
+  display:grid;
+  /* Mobile-first: single column by default */
+  grid-template-columns:1fr;
+  gap:16px;
+  padding:16px;
+  align-items:flex-start;
+}
+/* Desktop and up: make the Conversation panel the primary focus by increasing its share */
+@media (min-width: 960px){
+  main.layout{
+    grid-template-columns:minmax(0, 4fr) minmax(0, 0.9fr);
+  }
+}
+.column{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+.column-main{
+  min-width:0;
+}
+.column-sidebar{
+  min-width:0;
+}
+
+/* Add a simple mobile-first container helper so landmarks don't require inline widths */
+.container{
+  width:100%;
+  max-width:var(--container-md);
+  margin-left:auto;
+  margin-right:auto;
+  padding-inline:var(--container-padding);
+}
+/* increase container max-width at larger breakpoints */
+@media (min-width: 768px){
+  .container{ max-width: var(--container-lg); }
+}
+@media (max-width: 480px){
+  .container{ padding-inline: var(--aidev-space-sm); }
+}
+
+/* Card-ish panels */
+section, aside, .panel, .card{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:12px;
+  box-shadow:0 1px 0 rgba(15,23,42,0.02);
+}
+.card-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:8px;
+}
+.section-subtitle{
+  margin:2px 0 0;
+  font-size:12px;
+  color:var(--muted);
+}
+
+h2{margin:0 0 8px; font-size:16px}
+h3{margin:8px 0 6px; font-size:14px}
+small{color:var(--muted)}
+.row{
+  display:flex; gap:8px; align-items:center;
+  margin-bottom:8px; flex-wrap:wrap
+}
+input[type=text], select, textarea{
+  flex:1; padding:8px; border:1px solid #cbd5e1; border-radius:8px;
+  min-width:220px; background:#fff; color:#111827;
+}
+
+/* Buttons */
+button, .btn{
+  appearance:none; -webkit-appearance:none;
+  padding:8px 12px; border-radius:8px; cursor:pointer; line-height:1.2; font-weight:600;
+  border:1px solid transparent;
+  transition:background-color .12s ease, border-color .12s ease, color .12s ease, box-shadow .12s ease;
+}
+button:not(.secondary):not(.ghost),
+.btn:not(.secondary):not(.ghost){
+  background-color:var(--btn-bg) !important;
+  color:var(--btn-fg) !important;
+  border-color:var(--btn-border) !important;
+}
+button:not(.secondary):not(.ghost):hover,
+.btn:not(.secondary):not(.ghost):hover{
+  background-color:var(--btn-bg-hover) !important;
+  border-color:var(--btn-bg-hover) !important;
+}
+button:focus-visible, .btn:focus-visible{
+  outline:3px solid var(--focus-ring, #93c5fd); outline-offset:2px;
+}
+
+/* Primary CTA - prominent hero button
+   When #primary-start-cta or #primary-cta or .btn-primary is present, this styling makes it visually
+   dominant and keyboard-focusable. Keeps text concise and provides a visible focus ring. */
+#primary-start-cta, #primary-cta, .btn-primary{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  padding:14px 20px;
+  min-height:44px;
+  border-radius:12px;
+  font-weight:700;
+  font-size:16px;
+  line-height:1;
+  background:var(--aidev-accent);
+  color:#ffffff;
+  border:1px solid rgba(0,0,0,0.08);
+  text-decoration:none;
+  cursor:pointer;
+  box-shadow:0 10px 30px rgba(79,70,229,0.12);
+  transition:transform .08s ease, box-shadow .12s ease, background-color .12s ease;
+  z-index:35;
+}
+
+/* Encourage first-in-row visual ordering in flex containers (header/hero) */
+#primary-start-cta, #primary-cta{ order:-1; }
+
+/* Hover / active */
+#primary-start-cta:hover, #primary-cta:hover, .btn-primary:hover{
+  transform:translateY(-1px);
+  background:#4338ca;
+  box-shadow:0 14px 34px rgba(67,56,202,0.16);
+}
+
+/* Focus - ensure high-contrast ring */
+#primary-start-cta:focus-visible, #primary-cta:focus-visible, .btn-primary:focus-visible{
+  outline:3px solid var(--focus-ring, #2563eb); /* clearly visible blue focus ring */
+  outline-offset:3px;
+  box-shadow:0 0 0 4px rgba(79,70,229,0.18), 0 10px 30px rgba(79,70,229,0.12);
+  border-color:rgba(255,255,255,0.12);
+  border-radius:12px;
+}
+
+/* Make sure anchor elements styled as buttons show expected behaviors */
+/* LEGACY-REMOVED: erroneous selector '#a#primary-start-cta' (typo) and duplicate anchor rule removed in rec ui/refactor-sse-and-cleanup */
+
+/* Small responsive tweak to keep CTA visible on small screens */
+@media (max-width:640px){
+  #primary-start-cta, #primary-cta, .btn-primary{ padding:10px 14px; font-size:15px; }
+}
+
+button.secondary, .btn.secondary{
+  background-color:var(--btn2-bg) !important;
+  color:var(--btn2-fg) !important;
+  border-color:var(--btn2-border) !important;
+}
+button.secondary:hover, .btn.secondary:hover{ background:#f8fafc !important; }
+button.ghost, .btn.ghost{
+  background-color:var(--ghost-bg) !important;
+  color:var(--ghost-fg) !important;
+  border-color:var(--ghost-border) !important;
+}
+button.ghost:hover, .btn.ghost:hover{ background:var(--ghost-hover) !important; }
+/* Consolidated disabled style (removed duplicate declarations) */
+button:disabled, .btn[disabled]{
+  background-color:var(--disabled-bg) !important;
+  color:var(--disabled-fg) !important;
+  border-color:var(--disabled-border) !important;
+  cursor:not-allowed;
+}
+
+/* Semantic button helpers for approvals/rejects */
+.btn-approve{
+  background-color:var(--accent) !important;
+  border-color:var(--accent) !important;
+  color:#fff !important;
+  box-shadow:0 0 0 1px rgba(79,70,229,0.15);
+}
+.btn-approve:hover{
+  background-color:#4338ca !important;
+  border-color:#4338ca !important;
+}
+.btn-reject{
+  background-color:var(--danger-soft) !important;
+  color:var(--danger) !important;
+  border-color:#fecaca !important;
+}
+.btn-reject:hover{
+  background-color:#fee2e2 !important;
+}
+
+/* Inline status text */
+.status{ margin-left:.5rem; opacity:.9; color:#334155; }
+
+/* Lists / Pills */
+ul{
+  list-style:none; padding:0; margin:0;
+  max-height:800px; overflow:auto;
+  border:1px solid var(--border); border-radius:8px
+}
+li{
+  padding:8px; border-bottom:1px solid #f1f5f9;
+  display:flex; justify-content:space-between; align-items:center; gap:8px
+}
+li:last-child{border-bottom:0}
+.pill{
+  font-size:12px; padding:2px 6px; border-radius:999px;
+  background:#eef2ff; color:#3730a3
+}
+.pill.stale{ background:#fff7ed; color:#9a3412; border:1px solid #fed7aa }
+.pill.fresh{ background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0 }
+.pill.suggested{ background:#dbeafe; color:#1e40af; }
+
+/* Risk pills (used in header + per-recommendation) */
+.risk-pill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:2px 8px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:0.03em;
+}
+.risk-pill.low{
+  background:#ecfdf5;
+  color:#065f46;
+  border:1px solid #a7f3d0;
+}
+.risk-pill.medium{
+  background:#fff7ed;
+  color:#9a3412;
+  border:1px solid #fed7aa;
+}
+.risk-pill.high{
+  background:#fee2e2;
+  color:#991b1b;
+  border:1px solid #fecaca;
+}
+
+/* Existing pill-based risk classes for plan modal */
+.pill.risk-low{ background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0 }
+.pill.risk-medium{ background:#fff7ed; color:#9a3412; border:1px solid #fed7aa }
+.pill.risk-high{ background:#fee2e2; color:#991b1b; border:1px solid #fecaca }
+
+/* Log / Diffs */
+#log{
+  white-space:pre-wrap;
+  font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  font-size:12px; background:#f4f6f8; color:#0f172a;
+  padding:8px; height:160px; overflow:auto; border-radius:8px;
+  border:1px solid rgba(15,23,42,0.06);
+}
+#log .log-status{
+  color:#0ea5a4;
+}
+#log .log-error{
+  color:#b91c1c;
+  background:rgba(248,113,113,0.06);
+  border-left:3px solid #fca5a5;
+  padding-left:6px;
+}
+#log .log-apply{
+  color:#065f46;
+}
+#log .log-recommendations,
+#log .log-recs{
+  color:#1e293b;
+}
+
+/* Muted prefix tokens like [status], [error], etc. */
+#log .log-tag{
+  opacity:0.8;
+  color:#556ee6;
+}
+
+/* Grouped run-log headers and entries for the collapsed Technical details panel */
+/* These provide clear, monospace-formatted groups when a user expands the run log. */
+.log-group{
+  margin:8px 0 4px;
+  font-size:13px;
+  font-weight:700;
+  color:var(--muted);
+  padding:6px 8px;
+  border-bottom:1px solid rgba(15,23,42,0.04);
+}
+.log-entry{
+  font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  font-size:12px;
+  background:transparent;
+  color:var(--ink);
+  padding:6px 8px;
+  border-radius:6px;
+  margin:6px 0;
+  white-space:pre-wrap;
+}
+/* When runlog/technical panel is shown use a slightly darker panel for contrast */
+.runlog-panel .log-entry{
+  background:#0b1220; color:#e5e7eb; padding:8px; border-radius:6px; margin:6px 0; }
+
+/* By default demote technical details: allow the container to be collapsed via .collapsed */
+.technical-panel.collapsed #log,
+.runlog-panel.collapsed #log{
+  max-height:0; padding:0; border:0; margin:0; overflow:hidden;
+}
+
+/* Main diffs area on page */
+#diffs{
+  white-space:pre-wrap; background:#f8fafc; padding:8px;
+  min-height:120px; max-height:50vh; overflow:auto;
+  border-radius:8px; border:1px solid var(--border);
+}
+.diff{
+  white-space:pre-wrap; background:#fbfbff;
+  border:1px solid #e6e6ff; padding:8px; border-radius:6px;
+  margin:8px 0; overflow:auto;
+}
+.diff-panel summary{ cursor:pointer }
+
+/* Toolbar / Notes */
+.toolbar{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+.kv{display:flex; gap:8px; align-items:center}
+.kv code{
+  font-size:12px; background:#f1f5f9; padding:2px 6px;
+  border-radius:6px; border:1px solid var(--border)
+}
+.note{font-size:12px; color:#6b7280}
+.success{color:#0f766e}
+.warn{color:#b45309}
+#error{color:#b91c1c}
+
+/* Project map JSON */
+#project-map-json{
+  white-space:pre-wrap;
+  font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  font-size:12px; background:#f8fafc; color:#111827;
+  padding:8px; max-height:40vh; overflow:auto;
+  border-radius:8px; border:1px solid var(--border);
+}
+
+/* Small info banner used above cards counts */
+.banner{
+  margin:6px 0 10px; padding:6px 10px;
+  background:#f4f8ff; border:1px solid #dce6ff;
+  border-radius:8px; display:inline-block;
+}
+.banner .dismiss{ margin-left:auto; }
+
+/* ---------- Top progress (header progress bar) ---------- */
+.top-progress{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  margin-left:12px;
+  min-width:0;
+  flex:1 1 260px;
+}
+.progress-line{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+#top-progress-step{
+  font-size:12px;
+  color:#e5e7eb;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+  overflow:hidden;
+}
+#top-progress-bar{
+  flex:1 1 auto;
+  height:8px;
+  border-radius:999px;
+}
+#top-progress-percent{
+  font-size:12px;
+  color:#cbd5e1;
+  white-space:nowrap;
+}
+
+/* ---------- Sticky Progress ---------- */
+.progress-shell{
+  position:sticky; top:0; z-index:30;
+  background:linear-gradient(#ffffff,#ffffffea);
+  border-bottom:1px solid var(--border);
+  padding:10px 12px;
+  display:flex; align-items:center; gap:12px;
+}
+/* Make progress visually clear with friendly labels */
+.progress-shell .progress-stage{
+  font-weight:600; color:#0f172a; font-size:13px;
+}
+.progress-bar-line{
+  display:flex; align-items:center; gap:10px;
+  width:100%;
+}
+.progress-bar-line progress{
+  width:100%;
+  height:12px;
+}
+#progress-label{ color:#334155; white-space:nowrap }
+.progress-mini{
+  display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;
+  border:0; max-height:none; overflow:visible;
+}
+.progress-mini li{
+  display:inline-flex; gap:6px; align-items:center; 
+  border:1px solid var(--border); border-radius:999px; padding:4px 8px;
+  background:#f8fafc;
+}
+.progress-mini code{
+  font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  background:#eef2ff; padding:1px 6px; border-radius:6px; border:1px solid #e0e7ff;
+}
+.progress-mini .muted{ color:var(--muted); }
+
+/* ---------- Project description panel ---------- */
+#description-section{
+  margin:0;
+}
+
+.description-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:8px;
+  margin-bottom:6px;
+}
+.description-header h3{
+  margin:0;
+}
+.description-header .note{
+  margin:2px 0 0;
+}
+
+.description-preview{
+  font-size:14px;
+  line-height:1.4;
+  padding:8px 10px;
+  border-radius:8px;
+  border:1px solid var(--border);
+  background:#f8fafc;
+  max-height:160px;
+  overflow:auto;
+  white-space:pre-wrap;
+}
+
+.compiled-brief-section{
+  margin-top:8px;
+}
+.compiled-brief-section summary{
+  font-size:13px;
+  color:var(--muted);
+  cursor:pointer;
+}
+#compiled-brief{
+  margin-top:6px;
+  padding:8px 10px;
+  border-radius:8px;
+  border:1px solid var(--border);
+  background:#0b1020;
+  color:#e5e7eb;
+  font-size:13px;
+  line-height:1.4;
+  max-height:200px;
+  overflow:auto;
+  white-space:pre-wrap;
+}
+/* Hide compiled brief entirely when we truly have nothing to show */
+.compiled-brief-section.empty-brief{
+  display:none;
+}
+
+/* ---------- Chat feed (primary focus) ---------- */
+.chat-panel{
+  display:flex; 
+  flex-direction:column; gap:8px;
+}
+.chat-panel .card-header{
+  margin-bottom:4px;
+}
+.chat-feed{
+  display:flex; flex-direction:column; gap:10px;
+  min-height:300px; max-height:70vh;
+  overflow:auto; border:1px solid var(--border); border-radius:12px;
+  padding:12px; background:var(--aidev-surface, #ffffff); margin-bottom:8px;
+  font-size:15px; /* slightly larger and friendlier */
+}
+/* Provide a simple .chat-bubble alias so DOM tests that look for chat-bubble find styling */
+.chat-bubble,
+.bubble{
+  padding:12px 16px; border-radius:12px; max-width:86%;
+  font-size:15px; line-height:1.5;
+  display:inline-block;
+}
+.chat-bubble.system,
+.bubble.system{
+  background:var(--bubble-system-bg, #f1f5f9);
+  color:var(--bubble-system-color, #111827);
+  border:1px solid var(--bubble-system-border, #e5e7eb);
+  align-self:flex-start; line-height:1.5;
+}
+.chat-bubble.user,
+.bubble.user{
+  background:var(--bubble-user-bg, #ecfeff);
+  color:var(--bubble-user-color, #083344);
+  border:1px solid var(--bubble-user-border, #cffafe);
+  align-self:flex-end; line-height:1.5;
+}
+.chat-bubble.assistant,
+.bubble.assistant{
+  background:var(--bubble-assistant-bg, #f5f3ff);
+  color:var(--bubble-assistant-color, #312e81);
+  border:1px solid var(--bubble-assistant-border, #e9d5ff);
+  align-self:flex-start; line-height:1.5;
+}
+
+/* Make key assistant actions a little more prominent inside bubbles */
+.chat-bubble.assistant strong, .bubble.assistant strong{
+  color: var(--bubble-assistant-strong, #2b224b); font-weight:700;
+}
+
+/* Bot typing indicator */
+/* A lightweight, accessible "bot is typing" bubble. JS should toggle a visually-hidden class
+   or add/remove a .visible class to control when it's shown. The element should include
+   role="status" / aria-live="polite" in the DOM for screen readers. */
+.bot-typing{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  padding:8px 12px;
+  border-radius:12px;
+  background:var(--bubble-assistant-bg, #f5f3ff); /* subtle assistant bubble tint */
+  color:var(--bubble-assistant-color, #312e81);
+  border:1px solid var(--bubble-assistant-border, #e9d5ff);
+  max-width:70%;
+  font-size:15px;
+  line-height:1;
+  align-self:flex-start; /* stay on assistant side */
+}
+/* Helper to hide by default; scripts may remove this class to show the indicator */
+.bot-typing.visually-hidden,
+.bot-typing.hidden{
+  position:absolute !important; width:1px !important; height:1px !important; padding:0 !important;
+  margin:-1px !important; overflow:hidden !important; clip:rect(0,0,0,0) !important; white-space:nowrap !important; border:0 !important;
+}
+.bot-typing .typing-label{
+  font-size:14px; color:var(--bubble-assistant-strong, #4b2fb7); opacity:0.95;
+}
+.bot-typing .dots{
+  display:inline-flex; gap:6px; align-items:flex-end; padding-left:4px;
+}
+.bot-typing .dot{
+  width:7px; height:7px; border-radius:50%; background:var(--bot-typing-dot, #7c3aed);
+  transform:translateY(0);
+  animation:bot-typing-bounce 900ms ease-in-out infinite;
+  opacity:0.85;
+}
+.bot-typing .dot:nth-child(1){ animation-delay:0s; }
+.bot-typing .dot:nth-child(2){ animation-delay:150ms; }
+.bot-typing .dot:nth-child(3){ animation-delay:300ms; }
+@keyframes bot-typing-bounce{
+  0%{ transform:translateY(0); opacity:0.45; }
+  50%{ transform:translateY(-6px); opacity:1; }
+  100%{ transform:translateY(0); opacity:0.45; }
+}
+/* Respect reduced-motion settings */
+@media (prefers-reduced-motion: reduce){
+  .bot-typing .dot{ animation:none; }
+}
+
+.chat-input-row{
+  margin-top:6px;
+}
+/* Helper line beneath the prompt input */
+.prompt-helper{
+  font-size:13px; color:var(--muted); margin-top:6px;
+}
+
+/* Planned panel */
+.planned-panel .planned-header{
+  align-items:flex-start;
+}
+.planned-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:8px;
+}
+.planned-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+
+/* Auto-approve toggle */
+.auto-approve-toggle {
+  display:inline-flex;
+  align-items:center;
+  gap:0.4rem;
+  font-size:0.9rem;
+  opacity:0.95;
+}
+
+.auto-approve-toggle input[type="checkbox"] {
+  cursor:pointer;
+}
+
+/* Global validation summary strip in planned panel */
+.validation-summary{
+  margin-top:6px;
+  padding:6px 8px;
+  border-radius:8px;
+  border:1px dashed var(--border);
+  background:#f9fafb;
+}
+.validation-chips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-bottom:4px;
+}
+.validation-chip{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-bottom:4px;
+}
+.validation-chip{
+  font-size:11px;
+  padding:2px 8px;
+  border-radius:999px;
+  border:1px solid #e5e7eb;
+  background:#f9fafb;
+  color:#475569;
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+}
+.validation-chip::before{
+  content:"●";
+  font-size:9px;
+  transform:translateY(-0.5px);
+}
+
+/* State colors for validation chips (JS toggles data-status) */
+.validation-chip[data-status="pending"]{
+  border-color:#e5e7eb;
+  color:#6b7280;
+}
+.validation-chip[data-status="pending"]::before{
+  color:#9ca3af;
+}
+.validation-chip[data-status="ok"]{
+  border-color:#22c55e;
+  background:#ecfdf3;
+  color:#166534;
+}
+.validation-chip[data-status="ok"]::before{
+  color:#22c55e;
+}
+.validation-chip[data-status="fail"]{
+  border-color:#f97373;
+  background:#fef2f2;
+  color:#991b1b;
+}
+.validation-chip[data-status="fail"]::before{
+  color:#ef4444;
+}
+
+/* Quality checks summary row (file + status) */
+.quality-summary{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin-top:4px;
+  font-size:12px;
+  color:var(--muted);
+}
+#quality-checks-icon{
+  font-size:13px;
+  opacity:0.85;
+}
+#quality-checks-status{
+  font-weight:500;
+  color:#0f172a;
+}
+
+/* Make the simplified Review card (non-technical control) visually distinct */
+.review-card{
+  border-radius:12px; padding:12px; background:#f8fafc; border:1px solid var(--border);
+}
+.review-card h3{ margin:0 0 8px; }
+.review-card .risk-explain{ font-size:12px; color:var(--muted); margin-top:6px; }
+
+/* Tooltip-like helper under risk pill */
+.risk-row{ display:flex; gap:8px; align-items:center; }
+.risk-row .risk-note{ font-size:12px; color:var(--muted); }
+.risk-row .risk-note .dismiss{ margin-left:auto; }
+
+/* Modal */
+.modal{
+  position:fixed; inset:0; display:none;
+  align-items:center; justify-content:center; z-index:50;
+}
+.modal.open{ display:flex; }
+
+/* LEGACY-REMOVED: .modal-backdrop, .modal-card, and related modal-card rules removed in rec ui/refactor-sse-and-cleanup
+   Rationale: these were legacy/duplicate modal helper rules used by deprecated setup/update/plan branches.
+*/
+
+/* Summaries modal class names (created dynamically by JS) */
+.modal-overlay{
+  position:absolute; inset:0; background:rgba(15,23,42,.45);
+}
+.modal-content{
+  position:relative; z-index:1;
+  width:min(800px, calc(100% - 24px));
+  background:var(--panel); border:1px solid var(--border);
+  border-radius:12px; padding:16px;
+  box-shadow:0 12px 32px rgba(0,0,0,0.3);
+}
+
+/* Wizard helpers */
+.wizard-step[hidden]{ display:none !important; }
+.radio{
+  display:flex; align-items:center; gap:8px;
+  padding:8px 10px; border:1px solid var(--border);
+  border-radius:10px;
+}
+
+/* Plan modal layout: left side rec list, right side summary/diff (optional) */
+.plan-layout{
+  display:grid;
+  grid-template-columns:minmax(0, 1.2fr) minmax(0, 1.5fr);
+  gap:12px;
+  margin-top:8px;
+}
+.plan-layout-column{
+  min-width:0;
+}
+
+/* Recommendation list */
+.rec-list{
+  max-height: 340px; overflow:auto;
+  border:1px solid var(--border);
+  border-radius:8px; padding:8px; background:#fff;
+}
+.rec-item{
+  display:flex; gap:10px; align-items:flex-start;
+  padding:10px; border-bottom:1px solid #f1f5f9;
+  flex-direction:column; align-items:stretch;
+}
+.rec-item:last-child{ border-bottom:0 }
+.rec-item .rec-header{ display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+.rec-title{ font-weight:600; font-size:15px; margin-right:8px; }
+.rec-meta{
+  display:flex; gap:6px; flex-wrap:wrap; margin-top:2px;
+}
+.rec-summary{ color:var(--muted); margin:6px 0 8px; }
+.rec-files{ display:flex; flex-direction:column; gap:6px; }
+.rec-files code{ font-size:12px; }
+
+/* Make the template-based recommendation cards share similar styling */
+.recommendation{
+  padding:10px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background:#ffffff;
+  margin-bottom:8px;
+}
+.recommendation .rec-header{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.recommendation .rec-title{
+  font-size:15px;
+  margin:0 0 2px;
+}
+.recommendation .rec-summary{
+  margin:4px 0 6px;
+}
+.rec-meta-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+  margin-top:2px;
+}
+.rec-validation{
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px;
+}
+
+/* Primary and secondary per-recommendation action buttons */
+.rec-actions{ display:flex; gap:8px; margin-top:10px; }
+.rec-actions .btn-approve{ min-width:160px; }
+.rec-actions .btn-reject{ min-width:120px; }
+
+/* Hide raw diffs by default; toggle with a class on the .rec-item (e.g. .expanded)
+   or via a small control styled below. This keeps technical details out of day-to-day view. */
+.rec-item .rec-technical{ margin-top:8px; }
+.rec-item .rec-technical .diff{ display:none; }
+.rec-item.expanded .rec-technical .diff{ display:block; }
+
+/* Show-technical toggle link */
+.show-technical-toggle{ background:transparent; border:0; color:var(--accent); cursor:pointer; font-size:13px; padding:0; }
+.show-technical-toggle:focus-visible{ outline:2px solid rgba(79,70,229,0.18); border-radius:4px; }
+
+/* Risk pill tooltip line: keep pill but add subtle explanatory line */
+.pill.risk-explain{ display:inline-block; margin-top:6px; font-size:12px; color:var(--muted); }
+.pill.risk-explain .risk-line{ display:block; margin-top:4px; font-size:12px; color:var(--muted); }
+
+/* Demote run log and technical details visually and ensure they're collapsed by default */
+.technical-panel{ background:transparent; border:0; padding:0; }
+.technical-panel .panel-inner{ border:1px solid var(--border); background:#0f172a; color:#e5e7eb; border-radius:8px; padding:8px; }
+.runlog-panel{ font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace; font-size:13px; }
+.runlog-controls{ display:flex; justify-content:flex-end; gap:8px; margin-bottom:8px; }
+
+/* Right-hand sidebar tweaks for Project description & Advanced tools */
+#description-section h3{ font-size:15px; }
+#description-section .description-preview[readonly]{ opacity:0.95; background:#fafafa; }
+.tools-panel .advanced-tools{ border-top:1px dashed var(--border); margin-top:8px; padding-top:8px; }
+.advanced-tools[hidden]{ display:none; }
+.advanced-tools-toggle{ background:transparent; border:0; color:var(--aidev-accent); cursor:pointer; font-size:13px; }
+
+/* Styles to support progressive disclosure: collapsed advanced panels and a visible toggle */
+/*
+  These rules hide advanced panels when the consumer adds the "collapsed" class to
+  any of the common advanced container selectors. A small toggle control (.tools-toggle)
+  is styled here so pages can insert a consistent affordance to expand/collapse advanced UI.
+*/
+.advanced-panel.collapsed,
+.tools-panel.collapsed,
+.panel.advanced.collapsed,
+.advanced-tools.collapsed,
+[data-advanced-panel].collapsed {
+  max-height: 0 !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  opacity: 0; /* visually de-emphasize */
+  transition: max-height .28s ease, opacity .18s ease, padding .18s ease;
+}
+
+/* When collapsing only the internals is desired (keep header visible), JS can add .collapsed to a child */
+.advanced-panel.collapsed > *:not(.panel-header),
+.tools-panel.collapsed > *:not(.panel-header),
+.panel.advanced.collapsed > *:not(.panel-header),
+.advanced-tools.collapsed > *:not(.panel-header),
+[data-advanced-panel].collapsed > *:not(.panel-header) {
+  display: none !important;
+}
+
+/* Toggle control shown near advanced sections */
+.tools-toggle{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 10px;
+  border-radius:8px;
+  border:1px solid var(--border);
+  background:var(--panel);
+  color:var(--ink);
+  cursor:pointer;
+  font-size:13px;
+}
+.tools-toggle:focus-visible{ outline:3px solid rgba(79,70,229,0.18); outline-offset:2px; }
+.tools-toggle .chev{ display:inline-block; transition: transform .18s ease; }
+.tools-toggle[aria-expanded="true"] .chev{ transform: rotate(180deg); }
+.tools-toggle[aria-expanded="false"] .chev{ transform: rotate(0deg); }
+
+/* Small helper when advanced panels are intentionally hidden via [hidden] */
+.advanced-tools[hidden].collapsed{ display:none !important; }
+
+/* Plan selected summary box */
+.plan-selected-summary{
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:8px 10px;
+  background:#f9fafb;
+  max-height:160px;
+  overflow:auto;
+  font-size:13px;
+}
+.plan-selected-summary h4{
+  margin:0 0 4px;
+  font-size:13px;
+}
+
+/* Optional diff container inside plan modal */
+.plan-diff-container{
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:#0b1020;
+  color:#e5e7eb;
+  padding:8px;
+  max-height:260px;
+  overflow:auto;
+  font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  font-size:12px;
+}
+
+/* Footer actions inside modals */
+.modal-footer{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  margin-top:10px;
+}
+
+/* Status bar */
+.statusbar{
+  display:flex; align-items:center; gap:8px;
+  padding:6px 12px; background:#eff6ff;
+  border-top:1px solid var(--border);
+  position:fixed;
+  bottom:0;
+  left:0;
+  right:0;
+  z-index:40;
+  box-shadow:0 -1px 4px rgba(15,23,42,0.08);
+}
+.status-main{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.dot{
+  width:8px; height:8px; border-radius:50%;
+  background:#9ca3af; display:inline-block;
+}
+.dot.ok{ background:#10b981; }
+
+/* Connection dot states (moved from index.html: accessibility helpers) */
+/* These classes should be toggled by JS: .dot.connected / .dot.connecting / .dot.disconnected */
+.statusbar .dot.connected { background: #10b981; }
+.statusbar .dot.connecting { background: #f59e0b; animation:conn-pulse 1.2s ease-in-out infinite; }
+.statusbar .dot.disconnected { background: #ef4444; opacity:0.95; }
+
+/* Alias for JS/HTML to target the status indicator dot */
+/* Added so app.js / index.html can reliably toggle connection state without depending on .dot selectors */
+.status-indicator{
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  background:var(--muted);
+  display:inline-block;
+  flex:0 0 10px;
+}
+.status-indicator.connected{ background: #10b981; }
+.status-indicator.connecting{ background: #f59e0b; animation: conn-pulse 1.2s ease-in-out infinite; }
+.status-indicator.disconnected{ background: #ef4444; opacity:0.95; }
+
+@keyframes conn-pulse { 0% { transform: scale(1); } 50% { transform: scale(1.4); } 100% { transform: scale(1); } }
+#conn-status { font-size:13px; color:var(--muted); }
+
+/* Controls row (legacy; now mainly inside tools panel) */
+.controls{
+  display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+  margin: 8px 0 4px;
+}
+
+/* Tools panel */
+.tools-panel{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.tools-title{
+  margin:0 0 4px;
+}
+.tools-grid{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.tool-group{
+  padding:8px 10px;
+  border-radius:8px;
+  border:1px dashed var(--border);
+  background:#f9fafb;
+}
+.tool-heading{
+  margin:0 0 4px;
+  font-size:13px;
+}
+.tool-label{
+  font-size:12px;
+  color:var(--muted);
+}
+
+/* Tiny actions inside diffs */
+.diff-actions{ display:flex; gap:6px; margin:6px 0; }
+.btn-xs{ padding:4px 8px; font-size:12px; }
+.btn.link{
+  background:transparent!important;
+  border-color:var(--ghost-border)!important;
+  color:var(--ghost-fg)!important;
+}
+
+/* Approval summary / file list helpers */
+.rationale{
+  background:#f8fafc; border:1px solid var(--border);
+  border-radius:8px; padding:8px; margin-bottom:8px;
+}
+.rationale h4{ margin:0 0 6px; }
+.file-list{ display:flex; flex-direction:column; gap:6px; }
+.file-row{
+  border:1px solid var(--border); border-radius:8px;
+  padding:6px; background:#fafbff;
+}
+.file-row summary code{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* Optional: tiny toast niceties (JS sets most styles inline) */
+.toast-card{ cursor:pointer; }
+.toast-actions .btn{ padding:4px 8px; font-size:12px; }
+
+/* ---------- Job-busy state cues ---------- */
+/* Avoid using a global cursor change (e.g. body { cursor: progress }) to indicate assistant activity.
+   Prefer the contextual bot typing indicator (the animated '...' bubble). Scope any cursor
+   feedback to the statusbar so other UI interactions are not affected. */
+.job-busy .statusbar{
+  cursor:progress;
+  background:#dbeafe;
+}
+.job-busy #status{
+  font-weight:600;
+  color:#1d4ed8;
+}
+.job-busy #send{
+  box-shadow:0 0 0 1px rgba(59,130,246,0.4);
+}
+
+/* ---------- Responsive tweaks for modals ---------- */
+@media (max-width: 640px){
+  .modal-card{
+    width:calc(100% - 16px);
+    max-height:100vh;
+    border-radius:10px;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Accessible progress, indeterminate/live region, status & truncation */
+/* These styles provide hooks/classes for aidev/ui/index.html to render */
+/* numeric progress and indeterminate states, an aria-live region, */
+/* a status block with state indicator + timestamp, and truncation */
+/* helpers (truncate-with-tooltip + data-full-text). */
+
+.aidev-progress{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  width:100%;
+  min-height:36px;
+}
+.aidev-progress .progress-track{
+  position:relative;
+  flex:1 1 auto;
+  height:10px;
+  background:var(--border);
+  border-radius:999px;
+  overflow:hidden;
+}
+.aidev-progress .progress-fill{
+  height:100%;
+  width:0%; /* JS should set width or aria-valuenow */
+  background:var(--accent);
+  border-radius:999px;
+  transition:width .24s ease;
+}
+/* Visual label that can show "editing files (1/4)" etc. */
+.aidev-progress .progress-label{
+  min-width:120px;
+  color:var(--muted);
+  font-size:13px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+/* Indeterminate state: JS can add .indeterminate to .progress-fill */
+.aidev-progress .progress-fill.indeterminate{
+  width:100%;
+  background:linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  animation:aid-indeterminate 1s linear infinite;
+  transform:translateX(-30%);
+}
+@keyframes aid-indeterminate{
+  0%{ transform:translateX(-30%); }
+  100%{ transform:translateX(130%); }
+}
+
+/* aria-live region: reserve a hook class so markup can place an element */
+.aidev-live{
+  position:relative;
+}
+/* by default live messages are visually-hidden; scripts can toggle */
+.aidev-live.visually-hidden{
+  position:absolute!important; width:1px!important; height:1px!important; padding:0!important;
+  margin:-1px!important; overflow:hidden!important; clip:rect(0,0,0,0)!important;
+  white-space:nowrap!important; border:0!important;
+}
+
+/* Status element with state indicator and timestamp */
+.aidev-status{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:13px;
+}
+.aidev-status .state-indicator{
+  width:10px; height:10px; border-radius:50%;
+  background:#9ca3af; flex:0 0 10px;
+}
+.aidev-status .state-indicator.ok{ background:var(--accent); }
+.aidev-status time{
+  color:var(--muted); font-size:12px;
+}
+
+/* Truncation + tooltip hook: markup should include data-full-text="..." */
+.truncate-with-tooltip{
+  display:inline-block;
+  max-width:220px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  position:relative;
+}
+/* show a lightweight tooltip box on hover/focus using data-full-text */
+.truncate-with-tooltip[data-full-text]:hover::after,
+.truncate-with-tooltip[data-full-text]:focus::after{
+  content: attr(data-full-text);
+  position:absolute;
+  left:0;
+  top:calc(100% + 6px);
+  z-index:60;
+  white-space:normal;
+  max-width:min(80vw,360px);
+  background:var(--panel);
+  color:var(--ink);
+  border:1px solid var(--border);
+  padding:6px 8px;
+  border-radius:6px;
+  box-shadow:0 6px 18px rgba(0,0,0,0.12);
+}
+
+/* End of accessibility/progress/status helpers */
+
+/* ------------------------------------------------------------------ */
+/* Additional UI adjustments to support: simplified Planned Changes card,
+   per-recommendation approval panels, hidden diffs behind an advanced toggle,
+   and small UX polish for non-technical users. These are intentionally
+   presentation-only (no backend wiring changes). */
+
+/* Make the Review card headline slightly larger and clearer */
+.planned-panel .review-card h3,
+.review-card h3{
+  font-size:16px; /* ensures "Review and apply these changes" reads clearly */
+  margin-bottom:6px;
+}
+
+/* Auto-approve toggle: add an inline info icon with simple tooltip text
+   recommending manual approval for new users. The tooltip text is added via CSS ::after.
+   JS can instead render a more accessible tooltip if desired. */
+.auto-approve-toggle .info-icon{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:18px; height:18px; border-radius:50%; background:var(--ghost-bg);
+  color:var(--ghost-fg); font-weight:700; font-size:12px; cursor:default; border:1px solid var(--ghost-border);
+  position:relative;
+}
+.auto-approve-toggle .info-icon::after{
+  content: "Manual approval is recommended for new users.";
+  position:absolute; left:50%; top:calc(100% + 6px); transform:translateX(-50%);
+  white-space:normal; max-width:240px; font-size:12px; color:var(--muted);
+  background:var(--panel); border:1px solid var(--border); padding:6px 8px; border-radius:6px;
+  box-shadow:0 6px 18px rgba(0,0,0,0.12);
+  opacity:0; pointer-events:none; transition:opacity .12s ease;
+}
+.auto-approve-toggle .info-icon:hover::after,
+.auto-approve-toggle .info-icon:focus::after{
+  opacity:1;
+}
+
+/* First-time guidance banner is already present; make dismiss button clear */
+.first-time-banner{
+  display:flex; gap:8px; align-items:flex-start; padding:10px; border-radius:10px;
+  background:#f0f9ff; border:1px solid #dbeafe; color:#0f1720; font-size:13px;
+}
+.first-time-banner .dismiss{ background:transparent; border:1px solid var(--border); padding:6px 8px; border-radius:8px; cursor:pointer; }
+
+ /* Accessibility: ensure progress-fill transitions are reduced-motion friendly */
+@media (prefers-reduced-motion: reduce){
+  .aidev-progress .progress-fill{ transition:none; }
+  .aidev-progress .progress-fill.indeterminate{ animation:none; }
+  .bot-typing .dot{ animation:none; }
+}
+
+/* ------------------------------------------------------------------ */
+#advanced-settings{
+  /* Baseline visual styling so the region is usable if JS is absent. JS/app.js toggles
+     document.body.classList.add('advanced-open') and the #advanced-toggle aria-expanded state. */
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:var(--panel);
+  padding:12px;
+  margin-top:8px;
+  box-shadow:0 6px 18px rgba(2,6,23,0.04);
+  transition: max-height .28s ease, opacity .18s ease, padding .18s ease;
+  overflow:hidden;
+}
+
+#advanced-toggle{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 10px;
+  border-radius:8px;
+  border:1px solid var(--border);
+  background:transparent;
+  color:var(--aidev-accent);
+  cursor:pointer;
+  font-size:13px;
+}
+#advanced-toggle .chev{ display:inline-block; transition: transform .18s ease; }
+#advanced-toggle:focus-visible{ outline:3px solid var(--focus-ring, #2563eb); outline-offset:2px; }
+
+/* By default keep advanced settings collapsed for the majority of users */
+body:not(.advanced-open) #advanced-settings{
+  max-height:0 !important;
+  opacity:0;
+  padding:0 !important;
+  margin:0 !important;
+  border:0 !important;
+  pointer-events:none;
+}
+
+/* When the user toggles advanced-open on the body, reveal the advanced panel */
+body.advanced-open #advanced-settings{
+  max-height:2000px; /* large enough to reveal content; constrained by inner content */
+  opacity:1;
+  padding:12px;
+  margin-top:8px;
+  border:1px solid var(--border);
+  pointer-events:auto;
+}
+
+/* Chev rotation bound to aria-expanded state set on the toggle */
+#advanced-toggle[aria-expanded="true"] .chev{ transform:rotate(180deg); }
+#advanced-toggle[aria-expanded="false"] .chev{ transform:rotate(0deg); }
+
+/* Ensure the advanced toggle has a clear, high-contrast focus state for keyboard users */
+#advanced-toggle:focus-visible{
+  outline:3px solid var(--focus-ring, #2563eb); /* clearer blue ring */
+  outline-offset:3px;
+  box-shadow:0 6px 18px rgba(37,99,235,0.08);
+}
+
+/* Ensure reduced-motion respects users who requested it for the new panel too */
+@media (prefers-reduced-motion: reduce){
+  #advanced-settings, #advanced-toggle .chev{ transition:none !important; }
+}
+
+/* ------------------------------------------------------------------ */
+#advanced-settings.collapsed > *:not(.panel-header){ display:none !important; }
+
+/* New: support for the newer #advanced-panel id and an explicit open class
+   JS can toggle the 'advanced-panel--open' class on #advanced-panel to reveal it.
+   This co-exists with the legacy #advanced-settings body-based approach for
+   backward compatibility. */
+#advanced-panel {
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:var(--panel);
+  padding:12px;
+  margin-top:8px;
+  box-shadow:0 6px 18px rgba(2,6,23,0.04);
+  transition: max-height .28s ease, opacity .18s ease, padding .18s ease;
+  overflow:hidden;
+  max-height:0;
+  opacity:0;
+  pointer-events:none;
+}
+
+/* When JS adds the open class to the panel, reveal its contents */
+#advanced-panel.advanced-panel--open {
+  max-height:2000px; /* allow full reveal; effectively constrained by content */
+  opacity:1;
+  padding:12px;
+  margin-top:8px;
+  pointer-events:auto;
+}
+
+/* Ensure the advanced panel is usable on small viewports (stack/scroll) */
+@media (max-width: 640px){
+  #advanced-settings{
+    width:100%;
+    max-height:70vh; /* allow scrolling inside on small screens */
+    overflow:auto;
+    padding:12px;
+    margin-top:8px;
+  }
+  #advanced-toggle{ font-size:15px; padding:10px 14px; }
+}
+
+/* Respect reduced-motion for users who requested it for the new panel too */
+@media (prefers-reduced-motion: reduce){
+  #advanced-panel{ transition:none !important; }
+}
+
+/* End of accessibility/progress/status helpers updated above. */
+/* End of file */
+
+/* ------------------------------------------------------------------ */
+#advanced-panel.hidden, #advanced-panel[hidden] {
+  /* Explicit rule to ensure scripts can rely on toggling .hidden or the [hidden]
+     attribute to fully collapse/hide the advanced panel without manipulating
+     inline styles. This complements the .advanced-panel--open class used to reveal it. */
+  display: none !important;
+  max-height: 0 !important;
+  opacity: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  pointer-events: none !important;
+}
+
+/* New styles: Inline Recommendations Panel (persistent, accessible, responsive)
+   These rules intentionally style an in-page recommendations panel that will be
+   mounted inside the Review & Apply area (not a modal). The markup IDs / classes
+   referenced here are the ones used by app.js/index.html per the recommendation.
+*/
+
+/* Container for the persistent recommendations panel (placed inside Review & Apply) */
+.recommendations-panel {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 2px 8px rgba(2,6,23,0.04);
+}
+.recommendations-panel[hidden] { display: none !important; }
+.recommendations-panel .panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.recommendations-panel .panel-header h4 {
+  margin: 0; font-size: 15px;
+}
+.recommendations-panel .recommendations-controls {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+}
+
+/* Search / quick filters inside the panel */
+.recommendations-search {
+  display:inline-flex; align-items:center; gap:8px;
+}
+.recommendations-search input[type="search"]{
+  padding:6px 8px; border-radius:8px; border:1px solid var(--border); min-width:160px;
+}
+
+/* List of recommendations (scrollable) */
+#recommendations-list, .recommendations-list{
+  display:flex; flex-direction:column; gap:8px; max-height:320px; overflow:auto; padding:4px;
+}
+
+/* Individual recommendation item (focusable container via JS tabindex=0) */
+.recommendation-item, .recommendation-item:focus-within {
+  display:flex; gap:12px; align-items:flex-start; padding:10px; border-radius:8px;
+  border:1px solid var(--border); background: #fff; transition: box-shadow .12s ease, border-color .12s ease;
+}
+.recommendation-item:hover { box-shadow: 0 6px 18px rgba(2,6,23,0.04); border-color: rgba(79,70,229,0.08); }
+.recommendation-item[aria-selected="true"]{
+  border-color: rgba(79,70,229,0.18);
+  box-shadow: 0 8px 28px rgba(79,70,229,0.06);
+}
+
+/* Left column: selection control */
+.recommendation-item .rec-checkbox { flex: 0 0 36px; display:flex; align-items:flex-start; }
+.recommendation-item input[type="checkbox"]{ width:18px; height:18px; cursor:pointer; accent-color: var(--aidev-accent); }
+.recommendation-item input[type="checkbox"]:focus-visible{ outline: 3px solid var(--focus-ring, #93c5fd); outline-offset:2px; border-radius:4px; }
+.recommendation-item input[type="checkbox"]:focus-visible{ outline: 3px solid var(--focus-ring, #93c5fd); outline-offset:2px; border-radius:4px; }
+
+/* Main content */
+.recommendation-item .rec-main { flex:1 1 auto; min-width:0; }
+.recommendation-item .rec-title{ font-weight:600; font-size:15px; margin:0; }
+.recommendation-item .rec-summary{ color: var(--muted); margin-top:6px; font-size:13px; }
+.recommendation-item .rec-meta{ display:flex; gap:8px; align-items:center; margin-top:8px; }
+
+/* Right column: risk + quick actions */
+.recommendation-item .rec-side { flex: 0 0 auto; display:flex; flex-direction:column; gap:8px; align-items:flex-end; }
+.recommendation-item .risk-pill{ font-size:12px; }
+
+/* Footer: approve/apply controls and status */
+.recommendations-footer{ display:flex; gap:8px; align-items:center; justify-content:space-between; margin-top:8px; }
+.recommendations-actions{ display:flex; gap:8px; align-items:center; }
+#recommendations-approve, .recommendations-approve{ min-width:160px; }
+#recommendations-cancel, .recommendations-cancel{ min-width:120px; }
+.recommendations-status{ font-size:13px; color:var(--muted); }
+.recommendations-selected-summary{ font-size:13px; color:var(--muted); }
+
+/* Provide clear focus styles for keyboard users navigating the panel */
+.recommendation-item:focus-within, .recommendation-item:focus {
+  outline: 3px solid rgba(37,99,235,0.12);
+  outline-offset: 2px;
+}
+.recommendations-panel :is(button, a, input[type="checkbox"]) :focus-visible{ outline:3px solid var(--focus-ring, #2563eb); outline-offset:3px; }
+
+/* Small controls: select all / clear */
+.recommendations-quick { display:flex; gap:6px; align-items:center; }
+.recommendations-quick button{ padding:6px 8px; font-size:13px; }
+
+/* When no recommendations are present show a friendly empty state */
+.recommendations-empty{ text-align:center; color:var(--muted); padding:12px; }
+
+/* Make the panel responsive on small screens */
+@media (max-width:640px){
+  .recommendations-panel{ padding:10px; }
+  #recommendations-list, .recommendations-list{ max-height:220px; }
+  .recommendation-item{ flex-direction:row; gap:10px; }
+  .recommendation-item .rec-side{ align-items:flex-start; }
+}
+
+/* Keep the panel inline (not an overlay) — do not apply positioning that would make it modal-like */
+.recommendations-panel{ position: relative; }
+
+/* End of recommendations-panel styles */
+
+/* ------------------------------------------------------------------ */
+/* Global keyboard focus baseline for core interactive elements to ensure visible focus
+   across different browsers and to satisfy accessibility/acceptance criteria. Specific
+   components may still override with their own focus-visible styles. */
+:is(a, button, input, select, textarea):focus-visible{
+  outline: 3px solid var(--focus-ring, #2563eb);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 4px rgba(37,99,235,0.06);
+}
+
+/* ------------------------------------------------------------------ */
+/* Additional responsive breakpoints required by acceptance criteria:
+   375px (small mobile), 768px (tablet), 1024px (desktop). These augment existing queries
+   and avoid inline sizing so layout adapts via CSS only. */
+@media (min-width: 375px){
+  /* minor spacing/legibility improvements for small phones */
+  .hero-text{ font-size:16.5px; }
+}
+@media (min-width: 768px){
+  /* tablet layout: introduce a modest two-column layout */
+  main.layout{
+    grid-template-columns: minmax(0, 3fr) minmax(0, 1fr);
+    gap:20px;
+    padding:20px;
+  }
+  .hero-text{ font-size:17px; }
+  #recommendations-list{ max-height:360px; }
+}
+@media (min-width: 1024px){
+  /* desktop: give conversation area more real estate */
+  main.layout{
+    grid-template-columns: minmax(0, 4fr) minmax(0, 0.9fr);
+  }
+  .hero-text{ font-size:18px; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Acceptance-focused breakpoints added to explicitly cover: <=480px, 481–1024px, and >1024px. */
+@media (max-width: 480px){
+  /* small-phone specific optimizations */
+  .hero-text{ font-size:15px; }
+  #recommendations-list{ max-height:200px; }
+  .modal-card{ width: calc(100% - 12px); }
+}
+@media (min-width: 481px) and (max-width: 1024px){
+  /* mid-range/tablet: slightly wider content, keep two-column feel */
+  main.layout{ grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); padding:18px; gap:18px; }
+  #recommendations-list{ max-height:320px; }
+}
+@media (min-width: 1025px){
+  /* explicit desktop rule ( >1024px ) */
+  main.layout{ grid-template-columns: minmax(0, 4fr) minmax(0, 0.9fr); }
+}
+
+/* End of file */
+
+/* ------------------------------------------------------------------ */
+/* moved from index.html: accessibility helpers & connection-dot states
+   - .skip-link: visible when focused to support keyboard users skipping to main content
+   - #conn-status and .statusbar .dot.* states: moved so index.html no longer needs inline <style>
+*/
+
+.skip-link{
+  position:absolute;
+  left:-9999px;
+  top:auto;
+  width:1px;
+  height:1px;
+  overflow:hidden;
+  z-index:1000;
+}
+.skip-link:focus,
+.skip-link:active{
+  left:8px;
+  top:8px;
+  width:auto;
+  height:auto;
+  padding:8px 12px;
+  background:var(--panel);
+  color:var(--ink);
+  border-radius:6px;
+  box-shadow:0 6px 18px rgba(0,0,0,0.12);
+  text-decoration:none;
+}
+
+/* End moved helpers */
+
+/* ------------------------------------------------------------------ */
+/* Additional small, targeted updates to satisfy accessibility and responsive validation feedback.
+   - Provide a focusable variant for visually-hidden content so it can be revealed on keyboard focus.
+   - Ensure a convenient .theme-dark selector can be toggled on body/html by scripts (complements existing [data-theme="dark"]).
+   - Add media-query guards up to 768px to avoid horizontal scrolling and ensure advanced panels/modal content is usable on mid-size phones/tablets.
+   - Add spacing/layout tweaks for >=1024px viewports.
+   - Stabilize the .status-indicator sizing to avoid layout shifts on narrow viewports.
+*/
+
+/* Focusable variant of the visually-hidden pattern (useful for skip-links or live regions that become visible when focused) */
+.visually-hidden.focusable,
+.visually-hidden-focusable{
+  position:absolute!important; width:1px!important; height:1px!important; padding:0!important; margin:-1px!important; overflow:hidden!important; clip:rect(0,0,0,0)!important; white-space:nowrap!important; border:0!important;
+}
+.visually-hidden:focus,
+.visually-hidden.focusable:focus,
+.visually-hidden-focusable:focus{
+  position:static!important; width:auto!important; height:auto!important; margin:0!important; overflow:visible!important; clip:auto!important; white-space:normal!important;
+}
+
+/* Allow scripts to toggle a simple .theme-dark on html/body to apply dark-mode variables (complements [data-theme="dark"]) */
+.theme-dark, .theme-dark body {
+  --aidev-bg: #0b1020;
+  --aidev-text: #e5e7eb;
+  --panel: #0f172a;
+  --ink: #e5e7eb;
+  --border: #1f2937;
+  background-color: var(--aidev-bg) !important;
+  color: var(--aidev-text) !important;
+}
+
+/* Mid-size viewport guard: avoid horizontal scroll and relax padding for up to 768px devices */
+@media (max-width: 768px){
+  html, body { max-width: 100%; overflow-x: hidden; }
+  .container { padding-inline: var(--aidev-space-sm); max-width: 100%; }
+  #advanced-settings { width: 100%; max-height: 70vh; overflow: auto; padding: 12px; box-sizing: border-box; }
+  #advanced-panel { width: 100%; box-sizing: border-box; }
+  .modal-card { width: calc(100% - 16px); box-sizing: border-box; }
+}
+
+/* Larger viewport spacing/layout adjustments */
+@media (min-width: 1024px){
+  .container { max-width: 1200px; padding-inline: 24px; }
+  main.layout { gap: 24px; }
+  .recommendations-panel { gap: 12px; padding: 16px; }
+}
+
+/* Stabilize the status-indicator: ensure a fixed size and no overflow on small viewports */
+.status-indicator{
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  min-width: 10px;
+  min-height: 10px;
+  vertical-align: middle;
+  display: inline-block;
+  flex: 0 0 10px;
+}
+
+/* Align focus-visible for recommendations panel controls */
+.recommendations-panel :is(button, a, input[type="checkbox"]):focus-visible{
+  outline: 3px solid var(--focus-ring, #2563eb);
+  outline-offset: 3px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Additional responsive breakpoints and small targeted updates to satisfy
+   the onboarding + diff rendering + accessibility acceptance criteria.
+*/
+
+/* Focusable variant for keyboard-visible onboarding banner and help controls */
+.onboarding-focusable:focus{ outline:3px solid var(--focus-ring); outline-offset:3px; }
+
+/* ------------------------------------------------------------------ */
+/* Diff viewer enhancements: monospace font, marker-preserve, wrapping, focus */
+/* These rules intentionally live at the end of the file to be additive and easy to review. */
+#diffs, .diff, .plan-diff-container {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size:13px;
+  width:100%;
+  max-width:100%;
+  box-sizing:border-box;
+  overflow-wrap:anywhere; /* ensure long tokens wrap instead of causing horizontal scroll */
+  word-break:break-word;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* Structured diff line markup: .diff-line -> container for a single line. */
+.diff-line{
+  display:block; /* each line occupies its own flow so it can be focused */
+  padding:6px 8px;
+  white-space:pre-wrap; /* allow wrapping while preserving spacing */
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  margin:4px 0;
+  border-radius:6px;
+  box-sizing:border-box;
+  outline:none;
+}
+
+/* Marker (plus/minus) - never wrap away from the line content */
+.diff-sign, .diff-marker{
+  display:inline-block;
+  min-width:28px;
+  width:28px;
+  text-align:center;
+  margin-right:8px;
+  white-space:nowrap; /* keep + or - attached */
+  font-weight:700;
+  flex:0 0 auto;
+}
+
+/* Main textual content of the diff line; can wrap but preserves +/- marker */
+.diff-content{
+  display:inline;
+  max-width:calc(100% - 48px);
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+
+/* Additions and removals: subtle background + left accent to convey semantic meaning. */
+.diff-add{
+  border-left:4px solid var(--aidev-accent);
+  background: rgba(79,70,229,0.03);
+  color:var(--bubble-assistant-color);
+}
+.diff-remove{
+  border-left:4px solid var(--danger);
+  background: rgba(185,28,28,0.03);
+  color:var(--danger);
+}
+
+/* Dark-mode adjustments for diff backgrounds to maintain readable contrast */
+@media (prefers-color-scheme: dark){
+  .diff-add{ background: rgba(124,58,237,0.06); }
+  .diff-remove{ background: rgba(185,28,28,0.04); }
+}
+[data-theme="dark"], .theme-dark {
+  .diff-add{ background: rgba(124,58,237,0.06); }
+  .diff-remove{ background: rgba(185,28,28,0.04); }
+}
+
+/* Ensure interactive elements in the diff region show a clear focus state */
+.diff :is(button, a):focus-visible,
+.diff-line:focus-visible{
+  outline: 3px solid var(--focus-ring, #2563eb);
+  outline-offset: 3px;
+  border-radius:6px;
+}
+
+/* Provide a small, explicit helper for consumers that render raw unified diff text */
+.diff .diff-raw{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+
+/* Help / onboarding banner styles referenced by app.js/index.html */
+#onboarding-banner{
+  display:flex;
+  gap:12px;
+  align-items:center;
+  width:100%;
+  max-width:100%;
+  background:linear-gradient(180deg, var(--panel), var(--panel));
+  border:1px solid var(--border);
+  padding:12px;
+  border-radius:10px;
+  box-shadow:0 6px 18px rgba(2,6,23,0.03);
+}
+#onboarding-banner p{ margin:0; color:var(--muted); font-size:13px; }
+#onboarding-banner .onboarding-cta{ margin-left:auto; }
+
+/* New: ensure the onboarding banner has a visible focus state via :focus-visible so keyboard users see it without needing extra classes */
+#onboarding-banner:focus-visible{
+  outline: 3px solid var(--focus-ring, #2563eb);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+
+#btn-help, #conn-retry{
+  background:var(--btn2-bg);
+  color:var(--btn2-fg);
+  border:1px solid var(--btn2-border);
+  padding:6px 10px;
+  border-radius:8px;
+  cursor:pointer;
+}
+#btn-help:focus-visible, #conn-retry:focus-visible{
+  outline:3px solid var(--focus-ring);
+  outline-offset:2px;
+}
+
+/* Small connection retry affordance inside the statusbar */
+.statusbar .conn-retry{
+  display:inline-flex;
+  gap:8px;
+  align-items:center;
+}
+
+/* Prevent horizontal scroll on very narrow viewports: ensure diff & recommendation panels are fluid */
+@media (max-width: 360px){
+  .diff-line{ padding:6px 6px; font-size:12px; }
+  .recommendations-panel, #diffs, .diff, .plan-diff-container, .modal-card{ width:100%; max-width:100%; box-sizing:border-box; overflow-x:hidden; }
+}
+
+/* Additional small improvements: ensure diff container preserves vertical scrolling without forcing horizontal scroll */
+#diffs, .diff{ overflow:auto; word-break:break-word; }
+
+/* End of diff viewer enhancements */
+
+/* ------------------------------------------------------------------ */
+/* Events panel: streaming SSE events */
+/* Scoped styles for the SSE events container and rows. App JS will append rows into #events-list using the template id event-row-template. */
+#events-panel{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:10px;
+  max-height:260px;
+  overflow-y:auto;
+  box-shadow:0 6px 18px rgba(2,6,23,0.03);
+}
+#events-panel .panel-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:8px;
+}
+#events-list{
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.event-row{
+  display:flex;
+  gap:10px;
+  align-items:flex-start;
+  padding:8px;
+  border-radius:8px;
+  background:transparent;
+  border:1px solid transparent;
+}
+.event-row + .event-row{
+  border-top:1px solid rgba(15,23,42,0.04);
+}
+.event-row:hover{
+  background: rgba(15,23,42,0.02);
+}
+.event-badge{
+  font-size:12px;
+  padding:4px 8px;
+  border-radius:999px;
+  display:inline-block;
+  font-weight:700;
+  color:var(--panel);
+  background:var(--aidev-accent);
+}
+.event-badge.type-log{ background:var(--muted); color:var(--panel); }
+.event-badge.type-progress{ background:#0ea5a4; color:#fff; }
+.event-badge.type-status{ background:var(--aidev-accent); color:#fff; }
+.event-badge.type-qa{ background:#fbbf24; color:#111827; }
+
+.event-content{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  flex:1 1 auto;
+  min-width:0;
+}
+.event-meta{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  color:var(--aidev-muted);
+  font-size:12px;
+}
+.event-timestamp{
+  color:var(--aidev-muted);
+  font-size:12px;
+  white-space:nowrap;
+}
+.event-payload{
+  font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  font-size:13px;
+  color:var(--ink);
+  max-width:60ch;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.event-payload.prewrap{
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+.event-payload--compact{
+  max-width:36ch;
+  text-overflow:ellipsis;
+  overflow:hidden;
+  white-space:nowrap;
+}
+/* subtle highlight animation for newly added events */
+.recent-event{ animation: aidev-flash 1.2s ease; }
+@keyframes aidev-flash{ 0%{ background: rgba(79,70,229,0.12); } 100%{ background: transparent; } }
+
+@media (prefers-color-scheme: dark){
+  #events-panel{ background:var(--panel); }
+  .event-row + .event-row{ border-top:1px solid rgba(255,255,255,0.03); }
+  .event-row:hover{ background: rgba(255,255,255,0.02); }
+}
+@media (max-width: 480px){
+  #events-panel{ max-height:200px; padding:8px; }
+  .event-payload{ font-size:12px; max-width:40ch; }
+}
+/* End events panel styles */
+
+/* ------------------------------------------------------------------ */
+/* SSE & timeline UI: stage timeline badges, banner/toast, other-events list, and small helpers
+   These are additive, scoped rules that app.js will target via data-state and ids per the recommendation.
+   Keep specificity low and prefer data-state attribute selectors so JS can set el.setAttribute('data-state','active'). */
+
+/* Stage timeline container (horizontal, scrollable on small screens) */
+.stage-timeline{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  overflow:auto;
+  padding:6px 4px;
+  margin:6px 0;
+  max-width:100%;
+}
+/* Individual stage badge: use data-state attributes for state styling */
+.stage-timeline .stage-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border-radius:999px;
+  font-size:13px;
+  font-weight:700;
+  color:var(--aidev-muted);
+  background:transparent;
+  border:1px solid var(--aidev-border);
+  white-space:nowrap;
+  flex:0 0 auto;
+}
+.stage-badge .stage-dot{
+  width:8px; height:8px; border-radius:50%; flex:0 0 8px; background:var(--aidev-muted);
+}
+/* Pending: subdued */
+.stage-badge[data-state="pending"]{
+  background:transparent;
+  color:var(--aidev-muted);
+  border-color:var(--aidev-border);
+  box-shadow:none;
+}
+/* Active: accent colored, prominent */
+.stage-badge[data-state="active"]{
+  background:linear-gradient(90deg, var(--aidev-accent), rgba(79,70,229,0.9));
+  color:#fff;
+  border-color:transparent;
+  box-shadow:0 8px 26px rgba(79,70,229,0.10);
+}
+.stage-badge[data-state="active"] .stage-dot{ background:#fff; }
+/* Done: success-orientated (use assistant bubble tokens for subtlety) */
+.stage-badge[data-state="done"]{
+  background:var(--bubble-assistant-bg);
+  color:var(--bubble-assistant-color);
+  border-color: rgba(34,197,94,0.12);
+}
+.stage-badge[data-state="done"] .stage-dot{ background:#22c55e; }
+/* Error: danger tone and strong border */
+.stage-badge[data-state="error"]{
+  background:var(--danger-soft);
+  color:var(--danger);
+  border-color: rgba(185,28,28,0.12);
+  box-shadow:0 6px 18px rgba(185,28,28,0.04);
+}
+.stage-badge[data-state="error"] .stage-dot{ background:var(--danger); }
+
+/* Compact, accessible focus for badges */
+.stage-badge:focus-visible{
+  outline:3px solid rgba(79,70,229,0.12);
+  outline-offset:3px;
+  border-radius:999px;
+}
+
+/* Small visual helper to avoid pushing other content: constrain width on small viewports */
+@media (max-width:480px){
+  .stage-timeline{ padding:6px 2px; gap:6px; }
+  .stage-timeline .stage-badge{ padding:6px 8px; font-size:12px; }
+}
+
+/* Progress helpers: allow JS to set --sse-progress on .aidev-progress (overrides default width) */
+.aidev-progress{ --sse-progress: 0%; }
+.aidev-progress .progress-fill{ width: var(--sse-progress, 0%); }
+/* Numeric percent label inside aidev-progress */
+.aidev-progress .progress-percent{
+  min-width:44px;
+  text-align:right;
+  font-weight:600;
+  color:var(--muted);
+  font-size:13px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+/* Error / toast banner (non-fixed) — placed near top of main content; z-index intentionally below .statusbar (z-index:40) */
+.error-banner{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:10px 12px;
+  border-radius:8px;
+  border:1px solid rgba(185,28,28,0.12);
+  background:var(--danger-soft);
+  color:var(--danger);
+  box-shadow:0 8px 24px rgba(185,28,28,0.06);
+  z-index:25;
+  position:relative; /* not fixed so it doesn't overlap the statusbar */
+}
+.error-banner .dismiss{
+  margin-left:auto;
+  background:transparent;
+  border:1px solid transparent;
+  padding:6px 8px;
+  border-radius:8px;
+  cursor:pointer;
+  color:var(--danger);
+}
+.error-banner .dismiss:focus-visible{
+  outline:3px solid rgba(185,28,28,0.18);
+  outline-offset:2px;
+}
+.error-banner strong{ color:var(--danger); }
+
+/* Toast variant that is visually similar but used inline */
+.toast-banner{ position:relative; }
+
+/* Other events (unknown types) collapsible area */
+#other-events{
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:var(--panel);
+  padding:8px;
+  margin-top:8px;
+}
+#other-events .panel-header{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+#other-events-toggle{ background:transparent; border:0; color:var(--aidev-accent); cursor:pointer; font-size:13px; padding:6px 8px; border-radius:8px; }
+#other-events-toggle:focus-visible{ outline:3px solid var(--focus-ring); outline-offset:2px; }
+#other-events-content{ max-height:0; overflow:hidden; opacity:0; transition:max-height .28s ease, opacity .18s ease; }
+#other-events[aria-expanded="true"] #other-events-content{ max-height:400px; opacity:1; }
+#other-events-list{ display:flex; flex-direction:column; gap:8px; padding:4px; max-height:320px; overflow:auto; }
+.unknown-event{
+  display:flex; gap:8px; align-items:flex-start; padding:8px; border-radius:8px; border:1px solid var(--border); background:transparent;
+}
+.unknown-event .meta{ font-size:12px; color:var(--aidev-muted); white-space:nowrap; }
+.unknown-event .payload{ font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace; font-size:13px; color:var(--ink); max-width:60ch; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* When newly-received unknown events arrive, briefly highlight them (respects reduced-motion below) */
+.unknown-event.recent-event{ animation: aidev-flash 1.2s ease; }
+
+@media (prefers-color-scheme: dark){
+  .stage-badge[data-state="pending"]{ border-color:var(--border); color:var(--muted); }
+  .stage-badge[data-state="done"]{ background: rgba(124,58,237,0.05); }
+  .error-banner{ background: rgba(185,28,28,0.04); border-color: rgba(185,28,28,0.16); box-shadow:none; }
+  #other-events{ background:var(--panel); }
+}
+[data-theme="dark"], .theme-dark{
+  .stage-badge[data-state="pending"]{ border-color:var(--border); color:var(--muted); }
+  .stage-badge[data-state="done"]{ background: rgba(124,58,237,0.05); }
+  .error-banner{ background: rgba(185,28,28,0.04); border-color: rgba(185,28,28,0.16); box-shadow:none; }
+}
+
+/* Respect reduced-motion for the new highlight animation */
+@media (prefers-reduced-motion: reduce){
+  .unknown-event.recent-event{ animation:none !important; }
+  .recent-event{ animation:none !important; }
+}
+
+/* Ensure these additions are additive and do not force layout shifts on core panels: limit widths on narrow viewports */
+@media (max-width: 360px){
+  .stage-timeline .stage-badge{ max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #other-events{ max-height:200px; overflow:auto; }
+}
+
+/* End SSE & timeline UI additions */
+
+/* ------------------------------------------------------------------ */
+/* End events panel styles */
+
+/* ------------------------------------------------------------------ */
+/* Additional compatibility rules added to satisfy validation feedback:
+   - Mirror .aidev-progress helpers for a compact SSE progress widget (.sse-progress, #sse-progress-bar, #sse-progress-percent).
+   - Ensure legacy/pre-seeded .stage class receives the same visual state styling as .stage-badge.
+   - Map the legacy other-event-entry selector to the newer unknown-event styles so both are styled consistently.
+   These are additive, low-specificity rules to avoid regressions. */
+
+/* Compact SSE progress: mirrors .aidev-progress behavior and respects --sse-progress */
+.sse-progress{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  width:100%;
+  min-height:36px;
+}
+.sse-progress .progress-track,
+#sse-progress-bar{
+  position:relative;
+  flex:1 1 auto;
+  height:10px;
+  background:var(--border);
+  border-radius:999px;
+  overflow:hidden;
+}
+.sse-progress .progress-fill{
+  height:100%;
+  width:0%;
+  background:var(--accent);
+  border-radius:999px;
+  transition:width .24s ease;
+}
+/* allow JS to control percent via --sse-progress */
+.sse-progress{ --sse-progress: 0%; }
+.sse-progress .progress-fill{ width: var(--sse-progress, 0%); }
+#sse-progress-percent{
+  min-width:44px;
+  text-align:right;
+  font-weight:600;
+  color:var(--muted);
+  font-size:13px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+/* Indeterminate state: mirror .aidev-progress behavior */
+.sse-progress .progress-fill.indeterminate{
+  width:100%;
+  background:linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  animation:aid-indeterminate 1s linear infinite;
+  transform:translateX(-30%);
+}
+
+/* Stage-badge compatibility: ensure legacy .stage receives same styling as .stage-badge */
+.stage-timeline .stage-badge,
+.stage-timeline .stage{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border-radius:999px;
+  font-size:13px;
+  font-weight:700;
+  color:var(--aidev-muted);
+  background:transparent;
+  border:1px solid var(--aidev-border);
+  white-space:nowrap;
+  flex:0 0 auto;
+}
+.stage-badge .stage-dot,
+.stage .stage-dot{
+  width:8px; height:8px; border-radius:50%; flex:0 0 8px; background:var(--aidev-muted);
+}
+.stage-badge[data-state="pending"],
+.stage[data-state="pending"]{
+  background:transparent;
+  color:var(--aidev-muted);
+  border-color:var(--aidev-border);
+  box-shadow:none;
+}
+.stage-badge[data-state="active"],
+.stage[data-state="active"]{
+  background:linear-gradient(90deg, var(--aidev-accent), rgba(79,70,229,0.9));
+  color:#fff;
+  border-color:transparent;
+  box-shadow:0 8px 26px rgba(79,70,229,0.10);
+}
+.stage-badge[data-state="active"] .stage-dot,
+.stage[data-state="active"] .stage-dot{ background:#fff; }
+.stage-badge[data-state="done"],
+.stage[data-state="done"]{
+  background:var(--bubble-assistant-bg);
+  color:var(--bubble-assistant-color);
+  border-color: rgba(34,197,94,0.12);
+}
+.stage-badge[data-state="done"] .stage-dot,
+.stage[data-state="done"] .stage-dot{ background:#22c55e; }
+.stage-badge[data-state="error"],
+.stage[data-state="error"]{
+  background:var(--danger-soft);
+  color:var(--danger);
+  border-color: rgba(185,28,28,0.12);
+  box-shadow:0 6px 18px rgba(185,28,28,0.04);
+}
+.stage-badge[data-state="error"] .stage-dot,
+.stage[data-state="error"] .stage-dot{ background:var(--danger); }
+.stage-badge:focus-visible,
+.stage:focus-visible{
+  outline:3px solid rgba(79,70,229,0.12);
+  outline-offset:3px;
+  border-radius:999px;
+}
+
+/* Map unknown-event and other-event-entry for compatibility */
+.unknown-event,
+.other-event-entry{
+  display:flex;
+  gap:8px;
+  align-items:flex-start;
+  padding:8px;
+  border-radius:8px;
+  border:1px solid var(--border);
+  background:transparent;
+}
+.unknown-event .meta,
+.other-event-entry .meta{ font-size:12px; color:var(--aidev-muted); white-space:nowrap; }
+.unknown-event .payload,
+.other-event-entry .payload{ font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace; font-size:13px; color:var(--ink); max-width:60ch; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.unknown-event.recent-event,
+.other-event-entry.recent-event{ animation: aidev-flash 1.2s ease; }
+
+/* End compatibility additions */

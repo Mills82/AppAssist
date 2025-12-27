@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/events.schema.json",
+  "title": "AI Dev Bot Event Stream (Structured Outputs compatible)",
+  "description": "Schema compatible with OpenAI Structured Outputs. Note: payload/data are wrapped to avoid open-ended objects.",
+  "type": "object",
+  "additionalProperties": false,
+
+  "properties": {
+    "type": {
+      "type": "string",
+      "description": "Event type discriminator.",
+      "enum": [
+        "status",
+        "token",
+        "assistant",
+        "plan",
+        "recommendations",
+        "diff",
+        "diffs",
+        "diff_ready",
+        "checks",
+        "result",
+        "error",
+        "analysis_result",
+        "analysis_plan",
+        "analysis",
+        "qa_mode_start",
+        "qa_answer",
+        "qa_mode_done",
+        "projects",
+        "project_selected",
+        "need_plan_approval",
+        "approval_summary",
+        "proposed",
+        "approval_requested",
+        "approval_request",
+        "validation_start",
+        "validation_repair",
+        "validation_done",
+        "validation_error",
+        "done",
+        "end",
+        "chat_intent_detected",
+        "chat_mode_chosen",
+        "mode_choice",
+        "chat_message",
+        "intent",
+        "progress",
+        "llm_call",
+        "edit_attempt_start",
+        "edit_attempt_result",
+        "patch_apply_failed",
+        "fallback_full_content",
+        "edit_finalized",
+        "cards.refresh.start",
+        "cards.refresh.done",
+        "project_create.questions",
+        "project_create.scaffold",
+        "project_create.applied",
+        "applied_changes",
+        "trace.patch_fallback"
+      ]
+    },
+
+    "event": {
+      "type": ["string", "null"],
+      "description": "Optional back-compat discriminator used by some emitters/consumers. If present, should usually equal `type`."
+    },
+
+    "payload": {
+      "$ref": "#/$defs/payload_wrapper",
+      "description": "Canonical payload wrapper. Use kind=json with JSON-serialized content for object/array payloads."
+    },
+
+    "data": {
+      "$ref": "#/$defs/payload_wrapper",
+      "description": "Back-compat alias for payload (same wrapper)."
+    },
+
+    "ts": {
+      "type": ["number", "null"],
+      "description": "Unix timestamp (seconds)."
+    },
+
+    "message": { "type": ["string", "null"] },
+    "msg":     { "type": ["string", "null"] },
+    "stage":   { "type": ["string", "null"] },
+    "where":   { "type": ["string", "null"] },
+    "detail":  { "type": ["string", "null"] },
+    "file":    { "type": ["string", "null"] },
+    "progress_pct": { "type": ["number", "null"] },
+    "text":    { "type": ["string", "null"] },
+
+    "recommendations": {
+      "type": ["array", "null"],
+      "description": "Optional mirror of recommendations for some events. Each item is a JSON-serialized object.",
+      "items": { "type": "string" }
+    },
+
+    "unified": {
+      "type": ["string", "null"],
+      "description": "Unified diff for diff/diff_ready events."
+    },
+
+    "ok": { "type": ["boolean", "null"] },
+
+    "where_stage": {
+      "type": ["string", "null"],
+      "description": "Optional helper alias if needed."
+    },
+
+    "job_id": {
+      "type": ["string", "null"],
+      "description": "Logical job ID for multi-step flows."
+    }
+  },
+
+  "required": [
+    "type",
+    "event",
+    "payload",
+    "data",
+    "ts",
+    "message",
+    "msg",
+    "stage",
+    "where",
+    "detail",
+    "file",
+    "progress_pct",
+    "text",
+    "recommendations",
+    "unified",
+    "ok",
+    "where_stage",
+    "job_id"
+  ],
+
+  "$defs": {
+    "payload_wrapper": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "How to interpret `value`.",
+          "enum": ["json", "text", "null"]
+        },
+        "value": {
+          "type": ["string", "null"],
+          "description": "If kind=json: JSON-serialized payload (object/array/primitive). If kind=text: raw text. If kind=null: must be null."
+        }
+      },
+      "required": ["kind", "value"]
+    }
+  }
+}

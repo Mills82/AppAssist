@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "./intent_classification.schema.json",
+  "title": "IntentClassification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["intent", "slots", "confidence", "rationale", "matched_rules"],
+  "properties": {
+    "intent": {
+      "type": "string",
+      "enum": [
+        "CREATE_PROJECT",
+        "SELECT_PROJECT",
+        "UPDATE_DESCRIPTIONS",
+        "RUN_CHECKS",
+        "Q_AND_A",
+        "ANALYZE_PROJECT",
+        "MAKE_RECOMMENDATIONS",
+        "APPLY_EDITS"
+      ]
+    },
+    "slots": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "project_name",
+        "project_path",
+        "base_dir",
+        "create_if_missing",
+        "focus",
+        "instructions",
+        "tech_stack",
+        "framework",
+        "model",
+        "focus_raw",
+        "targets",
+        "top_k",
+        "answers",
+        "answers_text"
+      ],
+      "properties": {
+        "project_name": { "type": ["string", "null"], "minLength": 1, "maxLength": 200 },
+        "project_path": { "type": ["string", "null"], "minLength": 1, "maxLength": 800 },
+        "base_dir": { "type": ["string", "null"], "minLength": 1, "maxLength": 800 },
+
+        "create_if_missing": { "type": ["boolean", "null"] },
+
+        "focus": { "type": ["string", "null"], "minLength": 1, "maxLength": 20000 },
+        "instructions": { "type": ["string", "null"], "minLength": 1, "maxLength": 20000 },
+
+        "tech_stack": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 5000,
+          "description": "Comma-separated or short phrase, e.g. \"flutter, firebase\" or \"fastapi\"."
+        },
+
+        "framework": { "type": ["string", "null"], "minLength": 1, "maxLength": 200 },
+        "model": { "type": ["string", "null"], "minLength": 1, "maxLength": 200 },
+        "focus_raw": { "type": ["string", "null"], "minLength": 1, "maxLength": 20000 },
+
+        "targets": {
+          "type": ["array", "null"],
+          "items": { "type": "string", "minLength": 1, "maxLength": 800 },
+          "maxItems": 200
+        },
+
+        "top_k": { "type": ["integer", "null"], "minimum": 1, "maximum": 200 },
+
+        "answers": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 50000,
+          "description": "Free-form key/value style answers for CREATE_PROJECT flows. MUST NOT be an object."
+        },
+
+        "answers_text": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 50000,
+          "description": "Free-form answers text; use when you have extra details that do not fit other slots."
+        }
+      }
+    },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "rationale": { "type": "string", "maxLength": 4000 },
+    "matched_rules": { "type": ["string", "null"], "maxLength": 4000 }
+  }
+}

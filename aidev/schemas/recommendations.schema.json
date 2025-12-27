@@ -1,0 +1,242 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "./recommendations.schema.json",
+  "title": "AI Dev Bot — Recommendations (v2, Structured Outputs compatible)",
+  "description": "Top-level recommendations payload (object root for Structured Outputs).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "recommendations": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 2,
+            "description": "Schema version for forwards-compat checks."
+          },
+          "id": {
+            "type": ["string", "null"],
+            "minLength": 3,
+            "maxLength": 120,
+            "description": "Stable ID for this recommendation (e.g., 'rec-abc123'). Use null if not available."
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 6000,
+            "description": "Why this cluster of work is worth doing relative to other possible changes in this repo."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 400,
+            "description": "Short, imperative recommendation title (like a PR title)."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 6000,
+            "description": "How this recommendation advances the developer_focus and supports acceptance criteria/goals."
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 6000,
+            "description": "1–2 sentence summary of what will actually be changed."
+          },
+          "risk": {
+            "type": "string",
+            "enum": ["low", "medium", "high"],
+            "description": "Overall risk level for this recommendation."
+          },
+          "budget_estimate": {
+            "type": ["object", "null"],
+            "description": "Optional estimated cost for implementing this recommendation (or null).",
+            "additionalProperties": false,
+            "properties": {
+              "tokens": {
+                "type": ["integer", "null"],
+                "minimum": 0,
+                "description": "Approximate token budget for LLM calls (or null)."
+              },
+              "files": {
+                "type": ["integer", "null"],
+                "minimum": 0,
+                "description": "Approximate number of files expected to change (or null)."
+              },
+              "notes": {
+                "type": ["string", "null"],
+                "minLength": 1,
+                "maxLength": 2000,
+                "description": "Optional free-text notes about budget or scope (or null)."
+              }
+            },
+            "required": ["tokens", "files", "notes"]
+          },
+          "files": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 200,
+            "description": "Optional overview of expected per-file changes (empty array if none).",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 800,
+                  "description": "Repo-relative file path; must not be absolute or use parent segments.",
+                  "pattern": "^(?![A-Za-z]:)(?!/)(?!\\\\)(?!~)(?!\\.\\.)(?!\\./)(?!\\.\\\\).+"
+                },
+                "added": {
+                  "type": ["integer", "null"],
+                  "minimum": 0,
+                  "description": "Estimated lines added (or null)."
+                },
+                "removed": {
+                  "type": ["integer", "null"],
+                  "minimum": 0,
+                  "description": "Estimated lines removed (or null)."
+                },
+                "why": {
+                  "type": ["string", "null"],
+                  "minLength": 1,
+                  "maxLength": 6000,
+                  "description": "Short explanation of why this file is affected (or null)."
+                }
+              },
+              "required": ["path", "added", "removed", "why"]
+            }
+          },
+          "actions": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 50,
+            "description": "Concrete, implementable steps for this recommendation (empty array if none).",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "edit_file",
+                    "create_file",
+                    "refactor",
+                    "add_dependency",
+                    "run_command",
+                    "update_config",
+                    "write_test"
+                  ],
+                  "description": "Normalized action type understood by downstream tooling."
+                },
+                "path": {
+                  "type": ["string", "null"],
+                  "minLength": 1,
+                  "maxLength": 800,
+                  "description": "Repo-relative path for file-based actions. Must be null when type == 'run_command'.",
+                  "pattern": "^(?![A-Za-z]:)(?!/)(?!\\\\)(?!~)(?!\\.\\.)(?!\\./)(?!\\.\\\\).+"
+                },
+                "command": {
+                  "type": ["string", "null"],
+                  "minLength": 1,
+                  "maxLength": 6000,
+                  "description": "Shell command to run when type == 'run_command'; otherwise null."
+                },
+                "summary": {
+                  "type": "string",
+                  "minLength": 5,
+                  "maxLength": 2000,
+                  "description": "Short imperative description of what this action does."
+                },
+                "why": {
+                  "type": "string",
+                  "minLength": 5,
+                  "maxLength": 6000,
+                  "description": "Explanation of why this action is needed."
+                },
+                "references": {
+                  "type": "array",
+                  "minItems": 0,
+                  "maxItems": 12,
+                  "description": "Optional references such as card:// URIs or docs links.",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                },
+                "risk": {
+                  "type": "string",
+                  "enum": ["low", "medium", "high"],
+                  "description": "Risk level for this specific action."
+                },
+                "acceptance": {
+                  "type": ["string", "null"],
+                  "minLength": 3,
+                  "maxLength": 6000,
+                  "description": "Single acceptance condition for this action (or null)."
+                }
+              },
+              "required": [
+                "type",
+                "path",
+                "command",
+                "summary",
+                "why",
+                "references",
+                "risk",
+                "acceptance"
+              ]
+            }
+          },
+          "acceptance_criteria": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 12,
+            "description": "List of conditions that must be met for this recommendation to be considered complete.",
+            "items": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 4000
+            }
+          },
+          "acceptance_criterion": {
+            "type": ["string", "null"],
+            "minLength": 2,
+            "maxLength": 6000,
+            "description": "Single headline success condition summarizing the most important acceptance criterion (or null)."
+          },
+          "definition_of_done": {
+            "type": ["string", "null"],
+            "minLength": 2,
+            "maxLength": 6000,
+            "description": "Reviewer-friendly definition of done (or null)."
+          }
+        },
+        "required": [
+          "schema_version",
+          "id",
+          "rationale",
+          "title",
+          "reason",
+          "summary",
+          "risk",
+          "budget_estimate",
+          "files",
+          "actions",
+          "acceptance_criteria",
+          "acceptance_criterion",
+          "definition_of_done"
+        ]
+      }
+    }
+  },
+  "required": ["recommendations"]
+}

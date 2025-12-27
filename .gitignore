@@ -1,0 +1,44 @@
+# Secrets
+.env
+.env.*
+
+# AI Dev artifacts
+.aidev/
+
+# Temp / cache / OS junk
+*.log
+.DS_Store
+.pytest_cache/
+__pycache__/
+app.log
+
+# Node / Next.js
+node_modules/
+**/node_modules/
+
+.next/
+**/.next/
+
+out/
+**/out/
+
+dist/
+**/dist/
+
+build/
+**/build/
+
+# Next.js env (if you use it in clients/web)
+clients/web/.env.local
+clients/web/.env.*.local
+
+# Optional (npm/yarn/pnpm artifacts)
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Optional: lockfile policy (pick one approach)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml

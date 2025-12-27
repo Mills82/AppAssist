@@ -1,0 +1,116 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "description": "Schema version for the per-file Target Analysis envelope.",
+      "enum": [2]
+    },
+    "rec_id": {
+      "type": "string",
+      "description": "Identifier of the recommendation this analysis belongs to."
+    },
+    "focus": {
+      "type": "string",
+      "description": "Run-level focus or user-provided goal text."
+    },
+    "path": {
+      "type": "string",
+      "description": "Repo-relative path of the file being analyzed."
+    },
+    "role": {
+      "type": "string",
+      "description": "Short description of the file's role in the codebase for this recommendation (e.g., 'main implementation', 'shared helper', 'router', 'test file', 'config')."
+    },
+    "should_edit": {
+      "type": "boolean",
+      "description": "Whether the edit stage should actually modify this file for the current recommendation."
+    },
+    "local_plan": {
+      "type": "string",
+      "description": "Concrete description of what should change in this file to implement the recommendation (written for the editor stage)."
+    },
+    "constraints": {
+      "type": ["string", "null"],
+      "description": "Important invariants and contracts the editor must respect (e.g., do not change public API, preserve CLI flags, maintain backward compatibility)."
+    },
+    "related_paths": {
+      "type": "array",
+      "description": "Other files this file depends on or strongly influences for this recommendation.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "context_summary": {
+      "type": ["string", "null"],
+      "description": "Short summary of the most important context gleaned from neighboring or related files."
+    },
+    "notes_for_editor": {
+      "type": ["string", "null"],
+      "description": "Short, high-signal notes that can be injected verbatim into the edit_file prompt for this path."
+    },
+    "kind_hint": {
+      "type": ["string", "null"],
+      "description": "Optional coarse kind hint (e.g., 'source', 'test', 'config', 'doc') to help downstream heuristics."
+    },
+    "importance": {
+      "type": ["string", "null"],
+      "description": "Optional importance label of this file for the recommendation.",
+      "enum": ["primary", "secondary", "supporting", null]
+    },
+    "cross_file_notes": {
+      "type": ["string", "null"],
+      "description": "High-level notes about architecture, contracts, and constraints that this file contributes to the cross-file view. The orchestrator may merge these across all analyzed files."
+    },
+    "updated_targets": {
+      "type": "array",
+      "description": "Optional refined target-selection advice that the orchestrator may merge into the global target envelope for this recommendation.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Repo-relative path of the file that should be treated as a target for editing or inspection."
+          },
+          "intent": {
+            "type": ["string", "null"],
+            "description": "How the edit stage should treat this file.",
+            "enum": ["create", "edit", "inspect", "context_only", null]
+          },
+          "is_primary": {
+            "type": ["boolean", "null"],
+            "description": "Whether this is a primary file for implementing the recommendation."
+          },
+          "rationale": {
+            "type": ["string", "null"],
+            "description": "Short explanation of why this file is included and how it contributes to the recommendation."
+          },
+          "success_criteria": {
+            "type": ["string", "null"],
+            "description": "Optional file-specific success criteria or acceptance tests for this target."
+          }
+        },
+        "required": ["path", "intent", "is_primary", "rationale", "success_criteria"]
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "rec_id",
+    "focus",
+    "path",
+    "role",
+    "should_edit",
+    "local_plan",
+    "constraints",
+    "related_paths",
+    "context_summary",
+    "notes_for_editor",
+    "kind_hint",
+    "importance",
+    "cross_file_notes",
+    "updated_targets"
+  ]
+}

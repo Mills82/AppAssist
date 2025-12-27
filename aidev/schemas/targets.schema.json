@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "./targets.schema.json",
+  "title": "TargetsEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "targets": {
+      "type": "array",
+      "description": "Planner-selected targets describing which files to touch for a given recommendation.",
+      "minItems": 0,
+      "maxItems": 16,
+      "items": { "$ref": "#/$defs/target" }
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional short plan sequencing targets, calling out assumptions and uncertainties. Use empty string when none."
+    },
+    "selected_files": {
+      "type": "array",
+      "description": "Repo-relative file paths the planner selected to read / analyze before producing final targets. (Uniqueness should be enforced by host code, not schema.)",
+      "minItems": 0,
+      "maxItems": 24,
+      "items": { "$ref": "#/$defs/repoPath" }
+    },
+    "llm_payload_preview": {
+      "type": "array",
+      "description": "Preview of the LLM payload: per-file objects with content or excerpts plus checksums, one per selected file. Planner models may emit an empty array; host may replace with real entries.",
+      "minItems": 0,
+      "maxItems": 24,
+      "items": { "$ref": "#/$defs/payloadPreviewEntry" }
+    },
+    "trace_record_preview": {
+      "description": "Optional preview of the analysis trace record for .aidev/trace.jsonl, used for audit/debug only. If unused, set to null.",
+      "anyOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/traceRecordPreview" }
+      ]
+    }
+  },
+  "required": [
+    "targets",
+    "notes",
+    "selected_files",
+    "llm_payload_preview",
+    "trace_record_preview"
+  ],
+  "$defs": {
+    "repoPath": {
+      "type": "string",
+      "description": "Repo-relative file path or glob (use for selection/analysis); must not be absolute or use parent segments.",
+      "pattern": "^(?![A-Za-z]:)(?!/)(?!\\\\)(?!~)(?!\\.\\.)(?!\\./)(?!\\.\\\\).+"
+    },
+    "repoPathConcrete": {
+      "type": "string",
+      "description": "Concrete repo-relative file path; must not be absolute, use parent segments, or contain wildcard characters ('*','?'). Note: Next.js-style [param] segments are allowed.",
+      "pattern": "^(?!.*[\\*\\?])(?![A-Za-z]:)(?!/)(?!\\\\)(?!~)(?!\\.\\.)(?!\\./)(?!\\.\\\\).+$"
+    },
+    "intent": {
+      "type": "string",
+      "description": "Planner intent for this path.",
+      "enum": ["edit", "create", "delete", "rename"]
+    },
+    "effort": {
+      "type": "string",
+      "description": "Rough effort estimate: Small / Medium / Large.",
+      "enum": ["S", "M", "L"]
+    },
+    "risk": {
+      "type": "string",
+      "description": "Rough risk estimate for regressions.",
+      "enum": ["low", "medium", "high"]
+    },
+    "payloadPreviewEntry": {
+      "type": "object",
+      "description": "Single file payload preview. Provide either full content, or an excerpt, or neither (none). Host should validate consistency.",
+      "additionalProperties": false,
+      "properties": {
+        "path": { "$ref": "#/$defs/repoPath" },
+        "content_mode": {
+          "type": "string",
+          "description": "Indicates which fields are populated: full => content set, excerpt => content_excerpt set, none => both null.",
+          "enum": ["full", "excerpt", "none"]
+        },
+        "content": {
+          "description": "Full file content if included in the LLM payload; null otherwise.",
+          "anyOf": [{ "type": "string" }, { "type": "null" }]
+        },
+        "content_excerpt": {
+          "description": "Focused excerpt of the file used in the LLM payload; null otherwise.",
+          "anyOf": [{ "type": "string" }, { "type": "null" }]
+        },
+        "checksum": {
+          "type": "string",
+          "description": "SHA-256 hex of whichever string is provided in content or content_excerpt. Expected host-generated.",
+          "pattern": "^[A-Fa-f0-9]{8,128}$"
+        }
+      },
+      "required": ["path", "content_mode", "content", "content_excerpt", "checksum"]
+    },
+    "traceRecordPreview": {
+      "type": "object",
+      "description": "Host-generated audit/debug preview. If you need extra fields, add them explicitly (additionalProperties must remain false).",
+      "additionalProperties": false,
+      "properties": {
+        "timestamp": {
+          "description": "ISO 8601 timestamp for when the payload was constructed.",
+          "anyOf": [{ "type": "string" }, { "type": "null" }]
+        },
+        "selected_files": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/repoPath" },
+          "minItems": 0,
+          "maxItems": 64
+        },
+        "llm_payload_fingerprint": {
+          "description": "SHA-256 hex fingerprint of the serialized LLM payload.",
+          "anyOf": [{ "type": "string" }, { "type": "null" }]
+        },
+        "note": {
+          "description": "Short rationale for the selection / payload.",
+          "anyOf": [{ "type": "string" }, { "type": "null" }]
+        }
+      },
+      "required": ["timestamp", "selected_files", "llm_payload_fingerprint", "note"]
+    },
+    "target": {
+      "type": "object",
+      "description": "Single target describing a file/glob and the planner's intent, rationale, and confidence.",
+      "additionalProperties": false,
+      "properties": {
+        "path": { "$ref": "#/$defs/repoPathConcrete" },
+        "intent": { "$ref": "#/$defs/intent" },
+        "rationale": {
+          "type": "string",
+          "description": "Short explanation of why this file/change is selected now, tied to the brief and recommendation.",
+          "pattern": "^[\\s\\S]{3,}$"
+        },
+        "success_criteria": {
+          "type": "array",
+          "description": "Concrete, checkable criteria for considering this target complete.",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "pattern": "^[\\s\\S]{2,}$"
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "description": "Other files/modules/components this change depends on or affects. Use [] when none.",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": { "type": "string" }
+        },
+        "test_impact": {
+          "type": "string",
+          "description": "What tests to run or add to validate this change.",
+          "pattern": "^[\\s\\S]{3,}$"
+        },
+        "effort": { "$ref": "#/$defs/effort" },
+        "risk": { "$ref": "#/$defs/risk" },
+        "confidence": {
+          "type": "number",
+          "description": "Planner confidence (0.0–1.0) that this is a good target.",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "is_glob_spec": {
+          "type": "boolean",
+          "description": "True when this target originated from a glob spec; targets[].path MUST still be concrete for edit flows."
+        },
+        "origin_spec": {
+          "description": "Optional original pattern or spec emitted by the planner (may contain globs).",
+          "anyOf": [{ "type": "string" }, { "type": "null" }]
+        },
+        "glob_spec": {
+          "description": "Optional original glob pattern that produced this target (if any).",
+          "anyOf": [{ "type": "string" }, { "type": "null" }]
+        }
+      },
+      "required": [
+        "path",
+        "intent",
+        "rationale",
+        "success_criteria",
+        "dependencies",
+        "test_impact",
+        "effort",
+        "risk",
+        "confidence",
+        "is_glob_spec",
+        "origin_spec",
+        "glob_spec"
+      ]
+    }
+  }
+}

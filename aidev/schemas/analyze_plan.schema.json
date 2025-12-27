@@ -1,0 +1,145 @@
+{
+  "$id": "./analyze_plan.schema.json",
+  "title": "Analyze Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "enum": [1],
+      "description": "Schema version for the analyze plan object."
+    },
+    "focus": {
+      "type": "string",
+      "description": "High-level focus or question for this analysis run."
+    },
+    "overview": {
+      "type": "string",
+      "description": "Short natural-language overview of the project health and key findings for this focus."
+    },
+    "themes": {
+      "type": "array",
+      "description": "Grouped themes of findings / recommendations.",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable identifier for the theme (e.g. 'theme-core-apis')."
+          },
+          "title": {
+            "type": "string",
+            "description": "Short, action-oriented theme title."
+          },
+          "summary": {
+            "type": "string",
+            "description": "1–3 sentence summary of what this theme covers."
+          },
+          "impact": {
+            "type": "string",
+            "description": "Rough impact level if addressed.",
+            "enum": ["low", "medium", "high"]
+          },
+          "effort": {
+            "type": "string",
+            "description": "Rough implementation effort.",
+            "enum": ["low", "medium", "high"]
+          },
+          "files": {
+            "type": "array",
+            "description": "Relevant repo-relative files for this theme.",
+            "maxItems": 200,
+            "items": { "type": "string" }
+          },
+          "notes": {
+            "type": ["string", "null"],
+            "description": "Optional extra context for this theme."
+          },
+          "recommendations": {
+            "type": "array",
+            "description": "Concrete, read-only recommendations under this theme.",
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Stable identifier for this recommendation."
+                },
+                "title": {
+                  "type": "string",
+                  "description": "Short, action-oriented recommendation title."
+                },
+                "summary": {
+                  "type": "string",
+                  "description": "1–2 sentence description of what should be changed or improved."
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "Why this recommendation matters relative to the focus."
+                },
+                "impact": {
+                  "type": "string",
+                  "description": "Impact level if implemented.",
+                  "enum": ["low", "medium", "high"]
+                },
+                "effort": {
+                  "type": "string",
+                  "description": "Rough implementation effort.",
+                  "enum": ["low", "medium", "high"]
+                },
+                "risk": {
+                  "type": "string",
+                  "description": "Risk level of making this change.",
+                  "enum": ["low", "medium", "high"]
+                },
+                "files": {
+                  "type": "array",
+                  "description": "Relevant repo-relative files for this recommendation.",
+                  "maxItems": 200,
+                  "items": { "type": "string" }
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "summary",
+                "reason",
+                "impact",
+                "effort",
+                "risk",
+                "files"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "summary",
+          "impact",
+          "effort",
+          "files",
+          "notes",
+          "recommendations"
+        ]
+      }
+    },
+    "next_steps": {
+      "type": "array",
+      "description": "Concrete next steps the user can take after reviewing this plan.",
+      "maxItems": 50,
+      "items": { "type": "string" }
+    }
+  },
+  "required": [
+    "schema_version",
+    "focus",
+    "overview",
+    "themes",
+    "next_steps"
+  ]
+}
