@@ -821,7 +821,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12_000) {
             const ap =
                 (typeof activeProjectPath !== 'undefined' && typeof activeProjectPath === 'string' && activeProjectPath.trim())
                     ? activeProjectPath
-                    : (localStorage.getItem('aidev.activeProjectPath') || '');
+                    : '';
 
             if (ap) {
                 try {
@@ -1192,6 +1192,26 @@ const normalizePrimaryCTA = (typeof window !== 'undefined' && typeof window.norm
             }
         };
         el.addEventListener('keydown', handler);
+
+        // Guard: do not allow starting any run-like action if no project is selected.
+        // This blocks the action (no request sent) and prompts selection.
+        if (!el.__aidevProjectGuardWired) {
+            el.__aidevProjectGuardWired = true;
+            el.addEventListener('click', (e) => {
+                try {
+                    if (!requireProjectSelected('starting a run')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return false;
+                    }
+                } catch (_) {
+                    // If guard throws (shouldn't), default to blocking.
+                    try { e.preventDefault(); e.stopPropagation(); } catch { }
+                    return false;
+                }
+            }, true);
+        }
+
         return el;
     } catch (e) {
         // Never let normalization throw to console
@@ -1423,8 +1443,8 @@ let lastQualityChecksSummary = null;
 // new UX state
 let activeProjectId = null;
 let activeProjectPath = null;
-try { activeProjectId = safeLocalStorageGet('aidev.activeProjectId') || null; } catch (e) { activeProjectId = null; }
-try { activeProjectPath = safeLocalStorageGet('aidev.activeProjectPath') || null; } catch (e) { activeProjectPath = null; }
+// NOTE: per design decision, derive project selection from in-memory state only.
+// Do not hydrate project selection from localStorage on initial script load.
 
 // derived convenience
 let projectSelected = !!activeProjectPath;
@@ -1440,6 +1460,69 @@ let needsPostApplySync = false;
 
 // focus management for modals
 let __lastFocusedBeforeModal = null;
+
+// ---------- project selection guard (prevents requests without explicit selection) ----------
+function requireProjectSelected(actionLabel = 'continuing') {
+    try {
+        const ok = !!(projectSelected && activeProjectPath);
+        if (ok) return true;
+
+        const msg = `Please select a project before ${actionLabel}.`;
+        try { showToast(msg, 'Select', () => openModal('setup-modal')); } catch (e) { /* ignore */ }
+        try { pushBubble('system', msg); } catch (e) { /* ignore */ }
+        try {
+            const cp = $('current-project') || DOM.currentProject || document.getElementById('current-project');
+            if (cp && !cp.textContent) cp.textContent = '(no project selected)';
+        } catch (e) { /* ignore */ }
+        try { openModal('setup-modal'); } catch (e) { /* ignore */ }
+        return false;
+    } catch (e) {
+        // Fail-safe: block.
+        try { openModal('setup-modal'); } catch { }
+        return false;
+    }
+}
+
+function syncProjectUIState() {
+    try {
+        // Keep the header label accurate and explicit
+        const cp = $('current-project') || DOM.currentProject || document.getElementById('current-project');
+        if (cp) cp.textContent = activeProjectPath || '(no project selected)';
+
+        // Update the dedicated selected-project badge as the single source of truth for display
+        try {
+            const sp = document.getElementById('selected-project') || document.querySelector('[data-aidev-target="selected-project"]');
+            if (sp) {
+                sp.textContent = activeProjectPath || 'No project selected';
+            }
+        } catch (e) { /* ignore */ }
+
+        // Disable approve/reject when no project; do not allow any apply flow.
+        try {
+            const ap = $('approve-changes-btn');
+            const rj = $('reject-changes-btn');
+            if (ap) ap.disabled = !projectSelected || !proposed || !proposed.length;
+            if (rj) rj.disabled = !projectSelected || !proposed || !proposed.length;
+        } catch (e) { /* ignore */ }
+
+        // Ensure send control stays consistent with projectSelected (setRunBusy also handles this)
+        try {
+            const sendEl = $('send');
+            if (sendEl) sendEl.disabled = sendEl.disabled || !projectSelected;
+        } catch (e) { /* ignore */ }
+
+        // Keep primary CTA disabled when no project if it is a real <button>
+        try {
+            const primary = document.getElementById('primary-start-cta') || document.getElementById('primary-cta');
+            if (primary && primary.tagName && primary.tagName.toLowerCase() === 'button') {
+                primary.disabled = !projectSelected;
+            }
+        } catch (e) { /* ignore */ }
+
+        // Normalize and wire guard for primary CTA
+        try { normalizePrimaryCTA(); } catch (e) { /* ignore */ }
+    } catch (e) { /* ignore */ }
+}
 
 // ---------- project description state (app_descrip + compiled brief) ----------
 let currentAppDescription = '';   //.contents of app_descrip.txt (plain text)
@@ -2247,11 +2330,12 @@ function renderProposed() {
         approveThis.textContent = 'Approve this change';
         approveThis.onclick = async () => {
             try {
+                if (!requireProjectSelected('approving changes')) return;
                 if (!currentJobId) throw new Error('No active job to approve');
                 await fetchJSON('/jobs/approve', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ job_id: currentJobId })
+                    body: JSON.stringify({ job_id: currentJobId, project_path: activeProjectPath, project_id: activeProjectId })
                 }, TIMEOUTS.apply);
                 showToast('Approved. The change will be applied when ready.');
             } catch (e) { log('[approval] single approve failed: ' + (e?.message || e)); }
@@ -2304,8 +2388,8 @@ function renderProposed() {
 
     const ap2 = document.getElementById('approve-changes-btn');
     const rj2 = document.getElementById('reject-changes-btn');
-    if (ap2) ap2.disabled = !anyDiffs;
-    if (rj2) rj2.disabled = !anyDiffs;
+    if (ap2) ap2.disabled = !anyDiffs || !projectSelected;
+    if (rj2) rj2.disabled = !anyDiffs || !projectSelected;
 
     if (anyDiffs) {
         setPlannedStatus('This run will make ' + proposed.length + ' sets of changes. Review below, then approve or skip.');
@@ -2366,8 +2450,8 @@ function finishRun(ok) {
     planDecision = 'idle';
     planCancelledForRun = false;
     const ap = $('approve-changes-btn'); const rj = $('reject-changes-btn');
-    if (ap) ap.disabled = !proposed.length;
-    if (rj) rj.disabled = !proposed.length;
+    if (ap) ap.disabled = !proposed.length || !projectSelected;
+    if (rj) rj.disabled = !proposed.length || !projectSelected;
     setPlannedStatus('');
 
     // Stop any reconnect attempts and update connection UI
@@ -2416,7 +2500,7 @@ function setRunBusy(isBusy, label) {
     const sendEl = $('send');
     const msgEl = $('msg');
     if (sendEl) sendEl.disabled = !!isBusy || !projectSelected;
-    if (msgEl) msgEl.disabled = !!isBusy;
+    if (msgEl) msgEl.disabled = !!isBusy || !projectSelected;
 }
 
 // ---------- event dispatcher ----------
@@ -2599,6 +2683,9 @@ function handleEvent(ev) {
             setAppDescription(desc);
             setCompiledBrief(brief);
 
+            // Sync UI state now that project selection is confirmed
+            try { syncProjectUIState(); } catch (e) { /* ignore */ }
+
             const input = $('msg'); if (input) input.focus();
 
             // Friendlier, less noisy system message
@@ -2693,6 +2780,13 @@ function handleEvent(ev) {
                                     } catch (e) { }
                                     try { setRunBusy(true, 'Thinking about your question…'); } catch (e) { }
 
+                                    // Guard: never send /conversation if no project is explicitly selected.
+                                    if (!requireProjectSelected('asking a follow-up')) {
+                                        try { btn.disabled = false; } catch (ee) { }
+                                        try { setRunBusy(false, 'Idle'); } catch (ee) { }
+                                        return;
+                                    }
+
                                     // Ensure we have a valid sessionId before sending. If missing,
                                     // surface a user-facing message and re-enable the button.
                                     if (!sessionId) {
@@ -2705,7 +2799,7 @@ function handleEvent(ev) {
 
                                     try {
                                         // Send follow-up to /conversation (server will stream result back via SSE)
-                                        const payloadOut = { session_id: sessionId, question: q };
+                                        const payloadOut = { session_id: sessionId, question: q, project_path: activeProjectPath, project_id: activeProjectId };
                                         try { log('[qa] sending follow-up: ' + JSON.stringify(payloadOut)); } catch (e) { }
 
                                         await fetchJSON('/conversation', {
@@ -2876,8 +2970,8 @@ function handleEvent(ev) {
                             }
                             const ap = $('approve-changes-btn');
                             const rj = $('reject-changes-btn');
-                            if (ap) ap.disabled = !hasProposed;
-                            if (rj) rj.disabled = !hasProposed;
+                            if (ap) ap.disabled = !hasProposed || !projectSelected;
+                            if (rj) rj.disabled = !hasProposed || !projectSelected;
                             setPlannedStatus(
                                 'Checks completed, but some issues were found. Review the pre-apply checks and diffs, then approve or skip.'
                             );
@@ -2899,8 +2993,8 @@ function handleEvent(ev) {
                         // Manual mode: enable buttons once checks + planned changes are ready.
                         const ap = $('approve-changes-btn');
                         const rj = $('reject-changes-btn');
-                        if (ap) ap.disabled = !hasProposed;
-                        if (rj) rj.disabled = !hasProposed;
+                        if (ap) ap.disabled = !hasProposed || !projectSelected;
+                        if (rj) rj.disabled = !hasProposed || !projectSelected;
                         setPlannedStatus(
                             'Checks completed. Review the diffs and pre-apply checks, then Approve Changes or Skip to continue.'
                         );
@@ -2929,8 +3023,8 @@ function handleEvent(ev) {
                     } else {
                         const ap = $('approve-changes-btn');
                         const rj = $('reject-changes-btn');
-                        if (ap) ap.disabled = !hasProposed;
-                        if (rj) rj.disabled = !hasProposed;
+                        if (ap) ap.disabled = !hasProposed || !projectSelected;
+                        if (rj) rj.disabled = !hasProposed || !projectSelected;
                         setPlannedStatus(
                             'Waiting for your review. Check the diffs below, then Approve Changes or Skip to continue.'
                         );
@@ -3383,6 +3477,15 @@ async function selectProjectPath(projectPath, displayPath, kind, projectId) {
         activeProjectPath = selectedPath;
         activeProjectId = selectedProjectId;
 
+        // Ensure hidden project-root element is set for other code paths
+        try {
+            const prEl = document.getElementById('project-root');
+            if (prEl) {
+                prEl.dataset.projectRoot = activeProjectPath; // becomes data-project-root
+                prEl.dataset.projectId = activeProjectId;     // becomes data-project-id
+            }
+        } catch (e) { /* ignore */ }
+
         localStorage.setItem('aidev.activeProjectPath', activeProjectPath);
         localStorage.setItem('aidev.activeProjectId', activeProjectId);
 
@@ -3400,6 +3503,9 @@ async function selectProjectPath(projectPath, displayPath, kind, projectId) {
             projectBooted = true;
             postSelectBoot().catch(err => log('[error] postSelectBoot ' + (err?.message || err)));
         }
+
+        // keep project label + buttons in sync
+        try { syncProjectUIState(); } catch (e) { /* ignore */ }
 
         const input = $('msg');
         if (input) input.focus();
@@ -3849,7 +3955,9 @@ async function sendChat() {
             session_id: sessionId,
             mode: runMode,        // tell the backend which mode to use
             allow_edits: allowEdits,
-            auto_approve: autoApprove
+            auto_approve: autoApprove,
+            project_path: activeProjectPath,
+            project_id: activeProjectId
         };
 
         pushBubble('system', `Starting run — ${modeLabel}`);
@@ -3883,8 +3991,8 @@ async function sendChat() {
                 rejectBtnEl.title = title;
                 setPlannedStatus('Automatically apply changes as they\'re ready (advanced).');
             } else {
-                approveBtnEl.disabled = !proposed.length;
-                rejectBtnEl.disabled = !proposed.length;
+                approveBtnEl.disabled = !proposed.length || !projectSelected;
+                rejectBtnEl.disabled = !proposed.length || !projectSelected;
                 approveBtnEl.title = '';
                 rejectBtnEl.title = '';
                 if (proposed.length) {
@@ -3913,13 +4021,14 @@ async function approve(yes) {
     if (rejectBtn) rejectBtn.disabled = true;
 
     await withBusyButton(btn, async () => {
+        if (!requireProjectSelected(yes ? 'approving changes' : 'rejecting changes')) return;
         if (!currentJobId) throw new Error('No active job to approve/reject');
 
         const endpoint = yes ? '/jobs/approve' : '/jobs/reject';
         const data = await fetchJSON(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ job_id: currentJobId })
+            body: JSON.stringify({ job_id: currentJobId, project_path: activeProjectPath, project_id: activeProjectId })
         }, TIMEOUTS.apply);
 
         log(`[approval] ${yes ? 'approved' : 'rejected'} (job ${currentJobId}) -> ${JSON.stringify(data)}`);
@@ -4406,6 +4515,7 @@ if (btnRunChecks) btnRunChecks.onclick = () => withBusyButton(btnRunChecks, runC
 // Wire modal approve/reject to new endpoints (unchanged)
 if (checksApprove) checksApprove.onclick = async () => {
     try {
+        if (!requireProjectSelected('approving changes')) return;
         if (!currentJobId) throw new Error('No active job to approve');
         const data = await fetchJSON('/jobs/approve', {
             method: 'POST',
@@ -4428,6 +4538,7 @@ if (checksApprove) checksApprove.onclick = async () => {
 
 if (checksReject) checksReject.onclick = async () => {
     try {
+        if (!requireProjectSelected('rejecting changes')) return;
         if (!currentJobId) throw new Error('No active job to reject');
         const data = await fetchJSON('/jobs/reject', {
             method: 'POST',
@@ -4637,6 +4748,7 @@ async function submitPlanApproval() {
     }
 
     try {
+        if (!requireProjectSelected('approving the plan')) return;
         if (!currentJobId) throw new Error('No active job to approve');
         const data = await fetchJSON('/jobs/approve', {
             method: 'POST',
@@ -4997,13 +5109,22 @@ function _delegatedClickHandler(e) {
             case 'send-btn':
             case 'send-button':
             case 'send':
-                e.preventDefault(); sendChat(); break;
+                e.preventDefault();
+                if (!requireProjectSelected('starting a run')) return;
+                sendChat();
+                break;
             case 'approve-changes-btn':
             case 'approve':
-                e.preventDefault(); approve(true); break;
+                e.preventDefault();
+                if (!requireProjectSelected('approving changes')) return;
+                approve(true);
+                break;
             case 'reject-changes-btn':
             case 'reject':
-                e.preventDefault(); approve(false); break;
+                e.preventDefault();
+                if (!requireProjectSelected('rejecting changes')) return;
+                approve(false);
+                break;
             case 'gen-map':
                 e.preventDefault(); genProjectMap(); break;
             case 'btn-refresh-cards':
@@ -5017,7 +5138,10 @@ function _delegatedClickHandler(e) {
                 e.preventDefault(); openUpdateDescriptionModal(); break;
             case 'primary-start-cta':
             case 'primary-cta':
-                e.preventDefault(); openModal('setup-modal'); break;
+                e.preventDefault();
+                if (!requireProjectSelected('starting a run')) return;
+                openModal('setup-modal');
+                break;
             case 'btn-project':
                 e.preventDefault(); openModal('setup-modal'); break;
             case 'btn-toggle-map':
@@ -5106,6 +5230,9 @@ function init(root = document) {
             if (typeof window !== 'undefined' && typeof window.updateTopProgressLabel !== 'function') window.updateTopProgressLabel = updateTopProgressLabel;
         } catch (e) { log('[init] stage-map wiring failed: ' + (e?.message || e)); }
 
+        // Initialize project label/controls immediately on init
+        try { syncProjectUIState(); } catch (e) { /* ignore */ }
+
         // Debounced resize: keep header controls tidy on viewport changes
         try {
             if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
@@ -5132,6 +5259,9 @@ async function initUI(rootDocument = document) {
         try { ensureSSEAnnouncer(); } catch (e) { /* ignore */ }
         try { ensureSpinnerElement(); } catch (e) { /* ignore */ }
         try { ensureTechnicalDetailsPanel(); } catch (e) { /* ignore */ }
+
+        // Keep project label and control state correct on load
+        try { syncProjectUIState(); } catch (e) { /* ignore */ }
 
         // Init onboarding, advanced panels and toggle (idempotent guards inside)
         try { initOnboardingModal(); } catch (e) { log('[initUI] onboarding init failed: ' + (e?.message || e)); }
@@ -5230,6 +5360,9 @@ async function boot() {
     }
     try { await scan(); } catch { }
     setControlsEnabled(projectSelected);
+
+    // Initialize project label and ensure apply controls are disabled without selection
+    try { syncProjectUIState(); } catch (e) { /* ignore */ }
 
     // Initialize onboarding modal (separate from the lightweight banner). This
     // will open the modal on first load if the 'aidev_onboard_shown' flag is not set.

@@ -34,6 +34,9 @@ export interface APIError {
   details?: Record<string, unknown>;
 }
 
+// Export a camel-cased alias some consumers expect (ApiError) to ease migration.
+export type ApiError = APIError;
+
 /**
  * A simple alias/type representing a parsed error response body from the API.
  * Route handlers and the API client may use this type when parsing error JSON.
@@ -214,6 +217,8 @@ export type KnownEventType =
   | 'run.stage'
   | 'run:progress'
   | 'run.progress'
+  | 'run:done'
+  | 'run.done'
   | 'run:error'
   | 'run.error'
   | 'message'
@@ -257,6 +262,140 @@ export interface RunTimelineProps {
   progress?: number; // global run progress 0..100
   errors?: (string | { message: string; code?: string })[];
   otherEvents?: EventEnvelope[]; // secondary list of unknown/ignored events
+}
+
+// --- Typed SSE + Run state model (additive; EventEnvelope remains the raw fallback) ---
+
+/** Chat message emitted during a run (and rendered by ChatWindow). */
+export interface Message {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  ts?: string | number;
+}
+
+/** SSE: message event (normalized). */
+export interface SSEMessageEvent {
+  type: 'message';
+  ts?: string | number;
+  payload: {
+    message: Message;
+  };
+}
+
+/** SSE: stage update event (normalized). */
+export interface SSEStageEvent {
+  type: 'run:stage' | 'run.stage';
+  ts?: string | number;
+  payload: {
+    stage: StageState;
+  };
+}
+
+/** SSE: run/global progress event (normalized). */
+export interface SSEProgressEvent {
+  type: 'run:progress' | 'run.progress';
+  ts?: string | number;
+  payload: {
+    progress: number;
+  };
+}
+
+/** SSE: error event (normalized). */
+export interface SSEErrorEvent {
+  type: 'run:error' | 'run.error';
+  ts?: string | number;
+  payload: {
+    message: string;
+    code?: string;
+    details?: Record<string, unknown>;
+  };
+}
+
+/** SSE: completion event (normalized). */
+export interface SSEDoneEvent {
+  type: 'run:done' | 'run.done';
+  ts?: string | number;
+  payload?: {
+    reason?: 'completed' | 'cancelled' | 'error' | string;
+  };
+}
+
+/**
+ * SSEEvent is the normalized, strongly-typed SSE shape produced by the API client.
+ * If an event cannot be recognized/normalized, keep the raw EventEnvelope around.
+ */
+export type SSEEvent =
+  | SSEMessageEvent
+  | SSEStageEvent
+  | SSEProgressEvent
+  | SSEErrorEvent
+  | SSEDoneEvent
+  | EventEnvelope;
+
+/**
+ * RunStatePatch: canonical incremental update emitted by subscribeToRun.
+ * Each patch is a small, discriminated update that the RunState accumulator applies.
+ * Include optional eventId and ts fields to support dedupe/resume on reconnect.
+ */
+export type RunStatePatch =
+  | {
+      kind: 'message';
+      eventId?: string;
+      ts?: string | number;
+      payload: { message: Message };
+    }
+  | {
+      kind: 'stage';
+      eventId?: string;
+      ts?: string | number;
+      payload: { stage: StageState };
+    }
+  | {
+      kind: 'progress';
+      eventId?: string;
+      ts?: string | number;
+      payload: { progress: number };
+    }
+  | {
+      kind: 'error';
+      eventId?: string;
+      ts?: string | number;
+      payload: { message: string; code?: string; details?: Record<string, unknown> };
+    }
+  | {
+      kind: 'done';
+      eventId?: string;
+      ts?: string | number;
+      payload?: { reason?: string };
+    };
+
+/** Optional envelope used by the API client to send a patch plus identifying metadata. */
+export interface PatchEnvelope {
+  runId: string;
+  patch: RunStatePatch;
+  /** Optional monotonic sequence or server-provided lastEventId for resume/dedupe */
+  lastEventId?: string;
+}
+
+/** Canonical run lifecycle status for UI state. */
+export type RunStatus = 'running' | 'ended' | 'error';
+
+/**
+ * Canonical RunState accumulated from SSEEvent stream by the API client.
+ * ChatWindow/RunTimeline should consume this instead of ad-hoc raw SSE parsing.
+ */
+export interface RunState {
+  runId: string;
+  version?: number;
+  status: RunStatus;
+  stages: StageState[];
+  messages: Message[];
+  progress?: number;
+  errors?: { message: string; code?: string }[];
+  lastEventTs?: string | number;
+  startedAt?: string | number;
+  endedAt?: string | number;
 }
 
 // End of file

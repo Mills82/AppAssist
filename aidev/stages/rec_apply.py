@@ -733,7 +733,7 @@ def apply_rec_actions(
 
     - type == "run_command":
         IMPORTANT: Commands are QUEUED here and executed POST-APPROVAL (and typically post-apply)
-        by apply_single_recommendation(). This prevents side effects before user approval.
+        by apply_single_recommendation(). This prevents side effects from occurring before user approval.
 
     - type in {"create_file", "write_test"}:
         Append a FileEdit object that creates/overwrites the file with
@@ -1309,6 +1309,184 @@ def apply_single_recommendation(
     result = ApplyRecResult(rec_id=rid, title=title)
     # Record project_root early for tests/observability
     result.details["project_root"] = str(root.resolve())
+
+    # ------------------ project_root guard (UI-selected workspace enforcement) ------------------
+    # Refuse to run apply/edit workflows when no project root is provided or when
+    # the resolved root points at the AI Dev Bot repo / installed package directory.
+    # This must happen before any subprocess execution, preapply checks, or file writes.
+    try:
+        if root is None:  # type: ignore[truthy-bool]
+            raise ValueError("project_root is None")
+        # root is annotated as Path, but guard against callers passing str/other.
+        if not isinstance(root, Path):
+            try:
+                root = Path(str(root))
+            except Exception as e:
+                raise ValueError(f"project_root not a Path and could not be coerced: {e}")
+
+        try:
+            root_resolved = root.resolve()
+        except Exception as e:
+            raise ValueError(f"project_root could not be resolved: {e}")
+
+        # Empty/degenerate guard: treat '.' or missing value as invalid selection.
+        # (Path('.') resolves; this is best-effort and primarily for defensive callers.)
+        if str(root_resolved).strip() in ("", "."):
+            raise ValueError("project_root is empty")
+
+    except Exception as e:
+        # No project selected in UI (or invalid root passed): reject with clear error.
+        result.skipped = True
+        result.reason = "project_root_invalid"
+        result.details["project_root_invalid_reason"] = "missing"
+        result.details["message"] = (
+            "No project_root selected. Please select a project/workspace in the UI before running /apply."
+        )
+        result.details["project_root_error"] = str(e)
+        project_root_str = str(root) if root is not None else ""
+        payload = {
+            "reason": result.reason,
+            "subreason": result.details["project_root_invalid_reason"],
+            "error": str(e),
+            "rec_id": rid,
+            "project_root": project_root_str,
+        }
+        if progress_error_cb:
+            try:
+                progress_error_cb("apply_refused", payload)
+            except Exception:
+                try:
+                    debug("progress_error_cb_failed", meta={"where": "apply_refused", "rec_id": rid})
+                except Exception:
+                    pass
+        elif progress_cb:
+            try:
+                progress_cb("apply_refused", payload)
+            except Exception:
+                try:
+                    debug("progress_cb_failed", meta={"where": "apply_refused", "rec_id": rid})
+                except Exception:
+                    pass
+        try:
+            error("apply_refused.project_root_invalid", meta={"rec_id": rid, **payload})
+        except Exception:
+            pass
+        try:
+            _events.status(
+                "Apply refused: project_root missing or invalid",
+                where="rec_apply",
+                rec_id=rid,
+                reason=result.reason,
+                subreason=result.details["project_root_invalid_reason"],
+                project_root=project_root_str,
+                session_id=session_id,
+                job_id=job_id,
+            )
+        except Exception:
+            pass
+        return result
+
+    # Bot-root detection: if the selected project_root points at the running bot
+    # repo/package location, refuse to apply (prevents writing into AI Dev Bot repo).
+    try:
+        import aidev as _aidev_pkg  # type: ignore
+
+        pkg_file = getattr(_aidev_pkg, "__file__", None)
+        if not pkg_file:
+            raise RuntimeError("aidev.__file__ is missing")
+
+        pkg_dir = Path(pkg_file).resolve().parent
+        bot_repo_root = pkg_dir.parent
+
+        # Orchestrator-compatible override check: allow applying to the bot repo only
+        # if an explicit opt-in is present via environment or explicit args/meta.
+        def _allow_aidev_root(meta_obj: Optional[Dict[str, Any]]) -> bool:
+            try:
+                ev = os.getenv("AIDEV_ALLOW_AIDEV_ROOT")
+                if ev and str(ev).lower() in ("1", "true", "yes"):
+                    return True
+            except Exception:
+                pass
+            try:
+                if isinstance(meta_obj, dict):
+                    # canonical places for an explicit allow flag
+                    if meta_obj.get("allow_aidev_root"):
+                        return True
+                    args = meta_obj.get("args") or meta_obj.get("orchestrator_args")
+                    if isinstance(args, dict) and args.get("allow_aidev_root"):
+                        return True
+            except Exception:
+                pass
+            return False
+
+        allow_override = _allow_aidev_root(meta)
+
+        # Compare against both the package directory and its parent (repo root).
+        if root_resolved in (pkg_dir, bot_repo_root) and not allow_override:
+            result.skipped = True
+            result.reason = "project_root_invalid"
+            result.details["project_root_invalid_reason"] = "bot_repo"
+            result.details["message"] = (
+                f"Refusing to apply: project_root {root_resolved} points to the AI Dev Bot installation "
+                f"({pkg_dir}) or bot repo root ({bot_repo_root}). Select a different project root."
+            )
+            result.details["aidev_pkg_dir"] = str(pkg_dir)
+            result.details["aidev_repo_root"] = str(bot_repo_root)
+            payload = {
+                "reason": result.reason,
+                "subreason": result.details["project_root_invalid_reason"],
+                "rec_id": rid,
+                "project_root": str(root_resolved),
+                "aidev_pkg_dir": str(pkg_dir),
+                "aidev_repo_root": str(bot_repo_root),
+            }
+            if progress_error_cb:
+                try:
+                    progress_error_cb("apply_refused", payload)
+                except Exception:
+                    try:
+                        debug("progress_error_cb_failed", meta={"where": "apply_refused", "rec_id": rid})
+                    except Exception:
+                        pass
+            elif progress_cb:
+                try:
+                    progress_cb("apply_refused", payload)
+                except Exception:
+                    try:
+                        debug("progress_cb_failed", meta={"where": "apply_refused", "rec_id": rid})
+                    except Exception:
+                        pass
+            try:
+                error("apply_refused.project_root_invalid", meta=payload)
+            except Exception:
+                pass
+            try:
+                _events.status(
+                    "Apply refused: project_root points at AI Dev Bot repo",
+                    where="rec_apply",
+                    rec_id=rid,
+                    reason=result.reason,
+                    subreason=result.details["project_root_invalid_reason"],
+                    project_root=str(root_resolved),
+                    session_id=session_id,
+                    job_id=job_id,
+                )
+            except Exception:
+                pass
+            return result
+        elif root_resolved in (pkg_dir, bot_repo_root) and allow_override:
+            try:
+                info("apply_override.allow_aidev_root", meta={"rec_id": rid, "project_root": str(root_resolved)})
+            except Exception:
+                pass
+
+    except Exception as e:
+        # Do not block applies if we can't determine bot install/repo location.
+        result.details["bot_root_check"] = {"ok": False, "error": str(e)}
+        try:
+            debug("bot_root_check_failed", meta={"error": str(e), "rec_id": rid, "project_root": str(root_resolved)})
+        except Exception:
+            pass
 
     # Optional per-rec self-review blob injected by the orchestrator.
     # Shape is defined by self_review.schema.json and typically includes:

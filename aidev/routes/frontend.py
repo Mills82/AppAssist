@@ -13,6 +13,11 @@ Next.js scaffold during local development. Mount this router under the '/api/v1'
 prefix in aidev/server.py so the effective runtime endpoints become
 /api/v1/ui/config, /api/v1/session/new, etc. See clients/web/API_CONTRACT.md for
 the documented API contract (to be added in the clients/web directory).
+
+This file also provides minimal /run and /apply endpoints for local/dev UI flows.
+These endpoints intentionally require/echo explicit project selection fields
+(project_id / project_path) when no backend proxy is available, to avoid any
+"default root" behavior.
 """
 
 from __future__ import annotations
@@ -118,6 +123,23 @@ class LLMAPIResponse(BaseModel):
     meta: Dict[str, Any] = {}
 
 
+class RunRequest(BaseModel):
+    """Generic payload wrapper for UI-triggered run/apply flows.
+
+    IMPORTANT: Config.extra = "allow" so unknown keys are preserved in
+    payload.dict(), preventing accidental dropping of project/session fields.
+    """
+
+    action: Optional[str] = None
+    project_id: Optional[str] = None
+    project_path: Optional[str] = None
+    session_id: Optional[str] = None
+    metadata: Dict[str, Any] = {}
+
+    class Config:
+        extra = "allow"
+
+
 # -----------------------------
 # Helpers
 # -----------------------------
@@ -188,6 +210,11 @@ async def _attempt_proxy(module_name: str, candidate_funcs: List[str], payload: 
     return None, None
 
 
+def _project_from_payload(payload: Dict[str, Any]) -> Optional[str]:
+    """Return a human-friendly project identifier for logging/debug."""
+    return payload.get("project_path") or payload.get("project_id")
+
+
 # -----------------------------
 # New UI-supporting endpoints
 # -----------------------------
@@ -213,6 +240,8 @@ async def ui_config() -> Dict[str, Any]:
             "conversation": f"{prefix}/conversation",
             "llm": f"{prefix}/llm",
             "events": f"{prefix}/events",
+            "run": f"{prefix}/run",
+            "apply": f"{prefix}/apply",
         },
         "notes": "Mount this router under '/api/v1' and add a permissive local-dev CORS origin (http://localhost:3000).",
     }
@@ -256,6 +285,75 @@ async def events(request: Request):
     stubbed stream intended for UI development and testing.
     """
     return StreamingResponse(_sse_generator(request), media_type="text/event-stream")
+
+
+@router.post("/run")
+async def run_endpoint(req: RunRequest, request: Request) -> Dict[str, Any]:
+    """Start a run (local/dev UI).
+
+    This endpoint is intentionally safe: if no backend proxy is available it will
+    NOT perform any apply/run action; it returns an explicit echo response that
+    includes project_id/project_path so the UI can confirm the selected project
+    is being sent (and avoid any implicit default-root behavior).
+    """
+    payload = req.dict()  # preserves unknown keys because RunRequest.extra = "allow"
+    logger.debug("/run received project=%s session=%s", _project_from_payload(payload), payload.get("session_id"))
+
+    modules = ["aidev.api.apply", "aidev.api.runner", "aidev.api.execution"]
+    candidates = ["start_run", "run_apply", "start_apply", "apply_changes", "start_execution"]
+
+    for module in modules:
+        try:
+            proxied_result, used_fn = await _attempt_proxy(module, candidates, payload)
+        except Exception as e:
+            logger.exception("proxy run handler failed: %s", e)
+            raise HTTPException(status_code=500, detail={"error": str(e)})
+
+        if proxied_result is not None:
+            # Preserve proxied result but also provide minimal debug context.
+            if isinstance(proxied_result, dict):
+                return {**proxied_result, "_proxied": True, "_via": f"{module}.{used_fn}"}
+            return {"result": proxied_result, "_proxied": True, "_via": f"{module}.{used_fn}"}
+
+    return {
+        "ok": True,
+        "stub": True,
+        "message": "No backend run/apply handler connected; not executing any action.",
+        "received": payload,
+    }
+
+
+@router.post("/apply")
+async def apply_endpoint(req: RunRequest, request: Request) -> Dict[str, Any]:
+    """Apply changes (local/dev UI).
+
+    Mirrors /run behavior and forwarding. If no backend proxy is available, this
+    returns an explicit echo response including project selection fields.
+    """
+    payload = req.dict()  # preserves unknown keys because RunRequest.extra = "allow"
+    logger.debug("/apply received project=%s session=%s", _project_from_payload(payload), payload.get("session_id"))
+
+    modules = ["aidev.api.apply", "aidev.api.runner", "aidev.api.execution"]
+    candidates = ["start_run", "run_apply", "start_apply", "apply_changes", "start_execution"]
+
+    for module in modules:
+        try:
+            proxied_result, used_fn = await _attempt_proxy(module, candidates, payload)
+        except Exception as e:
+            logger.exception("proxy apply handler failed: %s", e)
+            raise HTTPException(status_code=500, detail={"error": str(e)})
+
+        if proxied_result is not None:
+            if isinstance(proxied_result, dict):
+                return {**proxied_result, "_proxied": True, "_via": f"{module}.{used_fn}"}
+            return {"result": proxied_result, "_proxied": True, "_via": f"{module}.{used_fn}"}
+
+    return {
+        "ok": True,
+        "stub": True,
+        "message": "No backend run/apply handler connected; not executing any action.",
+        "received": payload,
+    }
 
 
 # -----------------------------

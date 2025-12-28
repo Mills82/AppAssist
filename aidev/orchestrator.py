@@ -432,6 +432,86 @@ class Orchestrator(OrchestratorEditMixin, OrchestratorQAMixin, OrchestratorAnaly
         """
         return str(self._registry_job_id or self.job_id)
 
+    # ---------------- Project root safety ----------------
+
+    _ERR_NO_PROJECT_SELECTED = (
+        "No project selected: set project_root in session or request; refusing to apply edits "
+        "to the AI Dev Bot repo."
+    )
+
+    def _aidev_repo_root(self) -> Path:
+        """Return the repository root of the running AI Dev Bot code.
+
+        This is used to prevent accidental writes/checks against the bot repo
+        when the UI/session did not provide a target project_root.
+        """
+        try:
+            # aidev/orchestrator.py -> aidev/ -> repo root
+            return Path(__file__).resolve().parent.parent
+        except Exception:
+            # Extremely defensive fallback; shouldn't happen.
+            return self.root.resolve()
+
+    def _is_aidev_repo_root(self, p: Path) -> bool:
+        """True when p resolves to the AI Dev Bot repo root directory."""
+        try:
+            return Path(p).resolve() == self._aidev_repo_root().resolve()
+        except Exception:
+            return False
+
+    def _allow_aidev_root_override(self) -> bool:
+        """Allow maintainers to explicitly opt-in to running against the bot repo."""
+        try:
+            v = self.args.get("allow_aidev_root")
+            if isinstance(v, bool):
+                return v
+            if isinstance(v, (int, float)):
+                return bool(v)
+            if isinstance(v, (bytes, bytearray)):
+                v = v.decode("utf-8", errors="ignore")
+            if isinstance(v, str) and v.strip():
+                return v.strip().lower() in {"1", "true", "yes", "y", "on"}
+        except Exception:
+            pass
+
+        try:
+            env = os.getenv("AIDEV_ALLOW_AIDEV_ROOT")
+            if env is None:
+                return False
+            return str(env).strip().lower() in {"1", "true", "yes", "y", "on"}
+        except Exception:
+            return False
+
+    def _assert_safe_project_root(self, *, where: str, action: str) -> None:
+        """Refuse write/apply validations when the root is missing/invalid.
+
+        Requirements enforced:
+          - A root must be present.
+          - Root must not equal the AI Dev Bot repo root unless override is enabled.
+
+        Always emits a progress_error before raising so UI can surface the issue.
+        """
+        try:
+            root = Path(self.root).resolve()
+        except Exception:
+            root = self.root
+
+        # Treat missing/unset root as invalid (should not happen in normal construction,
+        # but callers may pass placeholders).
+        if not root:
+            msg = self._ERR_NO_PROJECT_SELECTED
+            self._progress_error(where, error=msg, job_id=self.job_id, action=action)
+            raise OrchestratorError(msg)
+
+        if not self._allow_aidev_root_override() and self._is_aidev_repo_root(root):
+            msg = (
+                "Refusing to apply/validate against the AI Dev Bot repository root. "
+                "Select a project in the UI or provide a project_root in the request."
+            )
+            # Emit a clear error event before raising
+            self._progress_error(where, error=msg, job_id=self.job_id, action=action)
+            raise OrchestratorError(msg)
+
     def _mark_cancelled(self, *, reason: str = "cancel_api") -> None:
         try:
             self._cancel_event.set()
@@ -1121,6 +1201,16 @@ class Orchestrator(OrchestratorEditMixin, OrchestratorQAMixin, OrchestratorAnaly
             # Resolve mode once up front so we can skip focus-card work for Q&A/analyze.
             mode = self._get_mode()
 
+            # Defensive write-root validation (only for apply/edit flows and apply_jsonl).
+            # This must happen before any file writes.
+            try:
+                if mode in {"auto", "edit"} or bool(self.args.get("apply_jsonl")):
+                    self._assert_safe_project_root(where="project_root_invalid", action="run")
+            except OrchestratorError as e:
+                # Ensure a clear terminal result is emitted for UI consumers.
+                self._emit_result_and_done(ok=False, summary=str(e))
+                return
+
             if self._should_cancel():
                 self._emit_result_and_done(ok=False, summary="Run cancelled before planning.")
                 return
@@ -1709,6 +1799,15 @@ class Orchestrator(OrchestratorEditMixin, OrchestratorQAMixin, OrchestratorAnaly
         When both `content` and a diff are present, we prefer `content` so
         checks run against the exact post-edit file text.
         """
+        # Defensive root validation: preapply checks create a temporary workspace
+        # and must not run against the AI Dev Bot repo root unless explicitly allowed.
+        try:
+            self._assert_safe_project_root(where="project_root_invalid", action="preapply_checks")
+        except OrchestratorError as e:
+            # Emit a terminal result so API/UI can show the refusal.
+            self._emit_result_and_done(ok=False, summary=str(e))
+            raise
+
         self._rid_checks = _events.progress_start(
             "preapply_checks",
             detail="Running build/test checks in a temporary workspace…",
@@ -1801,6 +1900,14 @@ class Orchestrator(OrchestratorEditMixin, OrchestratorQAMixin, OrchestratorAnaly
         The returned details are normalized to a dict with at least an
         'errors' list, to support per-file feedback extraction.
         """
+        # Defensive root validation: validation creates a temporary workspace
+        # and must not run against the AI Dev Bot repo root unless explicitly allowed.
+        try:
+            self._assert_safe_project_root(where="project_root_invalid", action="validate_proposed_edits")
+        except OrchestratorError as e:
+            self._emit_result_and_done(ok=False, summary=str(e))
+            raise
+
         preapply_edits: List[Dict[str, Any]] = []
 
         for p in proposed or []:

@@ -1148,6 +1148,7 @@ def default_tool_registry(api: Any) -> ToolRegistry:
             except Exception:
                 pass
 
+
     def _maybe_register(
         tool_name: str,
         *,
@@ -1180,10 +1181,6 @@ def default_tool_registry(api: Any) -> ToolRegistry:
         optional=("project_name", "base_dir", "tech_stack"),
     )
     _maybe_register(
-        "select_project",
-        required=("project_path",),
-    )
-    _maybe_register(
         "refresh_cards",
         required=(),
         optional=("force",),
@@ -1208,6 +1205,35 @@ def default_tool_registry(api: Any) -> ToolRegistry:
         optional=("strategy_note",),
     )
 
+        # select_project: accept canonical + legacy keys and normalize to project_path
+    def _select_project_handler(params: Dict[str, Any]) -> Dict[str, Any]:
+        params = dict(params or {})
+        p = (
+            params.get("project_path")
+            or params.get("path")
+            or params.get("project_root")
+            or params.get("root")
+        )
+        p = str(p).strip() if p is not None else ""
+        if not p:
+            return {"ok": False, "error": "missing_project_path", "message": "Provide project_path (or path/project_root/root)."}
+        params["project_path"] = p  # normalize
+
+        fn = getattr(api, "select_project", None)
+        if not callable(fn):
+            return {"ok": False, "error": "tool_unavailable", "message": "api.select_project not available."}
+
+        return fn(**params)
+
+    r.register(
+        ToolSpec(
+            name="select_project",
+            handler=_select_project_handler,
+            required=(),  # allow any of the aliases
+            optional=("project_path", "path", "project_root", "root", "session_id"),
+        )
+    )
+
     # Deep research tool: validated in-handler so we can return ok=False envelopes
     # (ToolRegistry.execute would otherwise raise for missing required params).
     if hasattr(api, "deep_research") and callable(getattr(api, "deep_research")):
@@ -1227,14 +1253,10 @@ def default_tool_registry(api: Any) -> ToolRegistry:
             # Optional light validation (don't raise; return structured envelope).
             depth = call_params.get("depth")
             if depth is not None:
-                try:
-                    call_params["depth"] = int(depth)
-                except Exception:
-                    return {
-                        "ok": False,
-                        "error": "Invalid param: depth must be an int",
-                        "invalid": ["depth"],
-                    }
+                d = str(depth).strip().lower()
+                if d not in ("quick", "standard", "deep"):
+                    return {"ok": False, "error": "Invalid param: depth must be one of quick|standard|deep", "invalid": ["depth"]}
+                call_params["depth"] = d
 
             try:
                 res = api.deep_research(**call_params)

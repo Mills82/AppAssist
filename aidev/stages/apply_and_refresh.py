@@ -676,7 +676,9 @@ def apply_edits_and_refresh(
     filtered_paths: List[str] = []
     for p in paths:
         try:
-            candidate = (root / p).resolve()
+            # Resolve candidates against the canonical project_root to ensure
+            # containment checks and subsequent writes are root-locked.
+            candidate = (project_root_canonical / p).resolve()
             # Use relative_to to ensure candidate is within root
             candidate.relative_to(root_resolved)
             # path is inside project root
@@ -744,7 +746,8 @@ def apply_edits_and_refresh(
         elapsed,
     )
 
-    # Only write trace/app.log entries when there are applied changes to record.
+    # IMPORTANT: all on-disk artifacts must be written under project_root_canonical
+    # to ensure the selected UI project_root is used (never the bot repo/CWD).
     if filtered_paths:
         # compute safe project_root string for traces/events; avoid raising here
         try:
@@ -754,7 +757,7 @@ def apply_edits_and_refresh(
 
         # ---- append JSONL trace record ----
         try:
-            trace_path = root / ".aidev" / "trace.jsonl"
+            trace_path = project_root_canonical / ".aidev" / "trace.jsonl"
             _ensure_dir(trace_path)
             trace_record = {
                 "ts": datetime.utcnow().isoformat() + "Z",
@@ -780,7 +783,7 @@ def apply_edits_and_refresh(
 
         # ---- write a human-readable app.log entry ----
         try:
-            app_log = root / ".aidev" / "app.log"
+            app_log = project_root_canonical / ".aidev" / "app.log"
             _ensure_dir(app_log)
             ts = datetime.utcnow().isoformat() + "Z"
             try:
@@ -890,7 +893,7 @@ def apply_edits_and_refresh(
         # Include entries for changed project files (path + checksum of source file)
         for p in fpaths:
             try:
-                fp = root / p
+                fp = project_root_canonical / p
                 if fp.exists():
                     try:
                         data_bytes = fp.read_bytes()
@@ -904,7 +907,7 @@ def apply_edits_and_refresh(
 
         # Scan .aidev/cards/*.card.json for additional card metadata
         try:
-            cards_glob = root / ".aidev" / "cards" / "*.card.json"
+            cards_glob = project_root_canonical / ".aidev" / "cards" / "*.card.json"
             for card_file in glob.glob(str(cards_glob)):
                 try:
                     cf_path = Path(card_file)
@@ -932,7 +935,7 @@ def apply_edits_and_refresh(
                     out_index.append(
                         {
                             "path": card_path,
-                            "card_file": str(cf_path.relative_to(root)),
+                            "card_file": str(cf_path.relative_to(project_root_canonical)),
                             "checksum": csum,
                             "summary": obj.get("summary"),
                         }
@@ -1231,7 +1234,7 @@ def apply_edits_and_refresh(
                             meta["project_map"] = pm_any
                         except Exception:
                             pass
-                    pm_path = root / ".aidev" / "project_map.json"
+                    pm_path = project_root_canonical / ".aidev" / "project_map.json"
                     try:
                         progress_cb(
                             "project_map_refresh",
@@ -1249,7 +1252,7 @@ def apply_edits_and_refresh(
                         logging.debug("Failed to emit project_map_refresh event", exc_info=True)
                 else:
                     # Legacy fallback: use KnowledgeBase.save_project_map if available.
-                    out_path = root / ".aidev" / "project_map.json"
+                    out_path = project_root_canonical / ".aidev" / "project_map.json"
                     _ensure_dir(out_path)
 
                     save_fn = getattr(kb, "save_project_map", None) if kb is not None else None
@@ -1357,7 +1360,7 @@ def apply_edits_and_refresh(
                             meta["project_map"] = pm_any
                         except Exception:
                             pass
-                    pm_path = root / ".aidev" / "project_map.json"
+                    pm_path = project_root_canonical / ".aidev" / "project_map.json"
                     try:
                         progress_cb(
                             "project_map_refresh",
@@ -1378,7 +1381,7 @@ def apply_edits_and_refresh(
                 else:
                     save_fn = getattr(kb, "save_project_map", None) if kb is not None else None
                     if callable(save_fn):
-                        out_path = root / ".aidev" / "project_map.json"
+                        out_path = project_root_canonical / ".aidev" / "project_map.json"
                         _ensure_dir(out_path)
                         try:
                             pm_meta = dict(meta)
@@ -1449,7 +1452,7 @@ def apply_edits_and_refresh(
         if not dry_run:
             # Write cards index
             try:
-                cards_index_path = root / ".aidev" / "cards" / "index.json"
+                cards_index_path = project_root_canonical / ".aidev" / "cards" / "index.json"
                 written = _try_kb_write_cards_index(cards_index_path)
                 if written:
                     # KB wrote it; try to read it back to get count
@@ -1493,7 +1496,7 @@ def apply_edits_and_refresh(
 
             # Write project_map.json atomically if we have an in-memory pm or an existing file
             try:
-                pm_out_path = root / ".aidev" / "project_map.json"
+                pm_out_path = project_root_canonical / ".aidev" / "project_map.json"
                 if isinstance(pm, dict):
                     _atomic_write_json(pm_out_path, pm)
                 elif pm_out_path.exists():

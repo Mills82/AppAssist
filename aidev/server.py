@@ -52,6 +52,7 @@ except Exception:
 
 try:
     from dotenv import load_dotenv  # type: ignore
+
     load_dotenv()
 except Exception:
     pass
@@ -79,14 +80,18 @@ TAGS_METADATA = [
 
 # ---------- Helpers: SSE header middleware ----------
 
+
 class SSEHeaderMiddleware:
     """Force proper SSE headers on /jobs/* endpoints."""
+
     def __init__(self, app: ASGIApp, sse_prefix: str = SSE_PREFIX) -> None:
         self.app = app
         self.sse_prefix = sse_prefix
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or not scope.get("path", "").startswith(self.sse_prefix):
+        if scope["type"] != "http" or not scope.get("path", "").startswith(
+            self.sse_prefix
+        ):
             await self.app(scope, receive, send)
             return
 
@@ -115,6 +120,7 @@ class SSEHeaderMiddleware:
 
 # ---------- Helpers: Project resolution middleware ----------
 
+
 class ProjectResolveMiddleware:
     """ASGI middleware that resolves the active project root for each HTTP request.
 
@@ -122,10 +128,11 @@ class ProjectResolveMiddleware:
     1) session.project_root or session.root (if SessionMiddleware populated scope['session'])
     2) X-AIDEV-PROJECT header value
 
-    
+
     The resolved absolute path (string) is set on scope['state'].selected_project or None if not resolvable.
     This middleware does not mutate session state and never raises on bad input.
     """
+
     def __init__(self, app: ASGIApp, header_name: str = HEADER_NAME) -> None:
         self.app = app
         self.header_name = header_name.lower()
@@ -145,7 +152,9 @@ class ProjectResolveMiddleware:
                     if isinstance(session, dict):
                         pr = session.get("project_root") or session.get("root")
                     else:
-                        pr = getattr(session, "project_root", None) or getattr(session, "root", None)
+                        pr = getattr(session, "project_root", None) or getattr(
+                            session, "root", None
+                        )
                     if pr:
                         selected = str(pr)
                 except Exception:
@@ -182,6 +191,7 @@ class ProjectResolveMiddleware:
                 # Minimal lightweight state holder if Starlette didn't create one.
                 class _State:  # type: ignore
                     pass
+
                 state_obj = _State()
                 scope["state"] = state_obj
 
@@ -191,8 +201,10 @@ class ProjectResolveMiddleware:
             try:
                 state_obj = scope.get("state")
                 if state_obj is None:
+
                     class _State2:  # type: ignore
                         pass
+
                     state_obj = _State2()
                     scope["state"] = state_obj
                 setattr(state_obj, "selected_project", None)
@@ -207,6 +219,7 @@ def get_selected_project_from_scope(scope: Scope) -> Optional[str]:
 
     Useful for handlers/tests that need a shared resolution API.
     """
+
     try:
         state = scope.get("state")
         if not state:
@@ -215,7 +228,98 @@ def get_selected_project_from_scope(scope: Scope) -> Optional[str]:
     except Exception:
         return None
 
+
+def _project_root_from_session_like(session: Any) -> Optional[str]:
+    """Extract project_root/project_path/root from a cookie-session-like object (dict-like or attr-like)."""
+    if not session:
+        return None
+    try:
+        if isinstance(session, dict):
+            pr = (
+                session.get("project_root")
+                or session.get("project_path")
+                or session.get("root")
+            )
+        else:
+            pr = (
+                getattr(session, "project_root", None)
+                or getattr(session, "project_path", None)
+                or getattr(session, "root", None)
+            )
+        pr_s = str(pr).strip() if pr else ""
+        return pr_s or None
+    except Exception:
+        return None
+
+
+def _resolve_project_root(
+    *,
+    request: Optional[Request] = None,
+    session_obj: Any = None,
+    payload_project_root: Any = None,
+    allow_fallback_cwd: bool = True,
+) -> tuple[Optional[str], str]:
+    """Resolve project_root as an absolute string and return (project_root, source).
+
+    Resolution order (session-first for safety/consistency):
+      1) server-side session object (SESSIONS.ensure/get)
+      2) explicit payload.project_root (also accepts legacy project_path/root)
+      3) middleware-selected project (from cookie session/header)
+      4) fallback to cwd (optional; for legacy, non-edit flows)
+
+    source is one of: session | payload | header | cwd | none
+    """
+
+    # 1) session (already handles project_root/project_path/root if you updated it)
+    pr = _project_root_from_session_like(session_obj)
+    if pr:
+        try:
+            return str(Path(pr).resolve()), "session"
+        except Exception:
+            pass
+
+    # 2) payload (string or dict-like)
+    if payload_project_root:
+        try:
+            pr2: Optional[str] = None
+
+            if isinstance(payload_project_root, dict):
+                # Accept canonical + legacy keys
+                pr2 = (
+                    payload_project_root.get("project_root")
+                    or payload_project_root.get("project_path")
+                    or payload_project_root.get("root")
+                )
+            else:
+                pr2 = str(payload_project_root).strip()
+
+            pr2_s = str(pr2).strip() if pr2 else ""
+            if pr2_s:
+                return str(Path(pr2_s).resolve()), "payload"
+        except Exception:
+            pass
+
+    # 3) header (middleware-populated)
+    if request is not None:
+        try:
+            selected = get_selected_project_from_scope(request.scope)
+            if selected:
+                return str(Path(selected).resolve()), "header"
+        except Exception:
+            pass
+
+    # 4) fallback
+    if allow_fallback_cwd:
+        try:
+            return str(Path.cwd().resolve()), "cwd"
+        except Exception:
+            return None, "none"
+
+    return None, "none"
+
+
 # ---------- In-memory Job Registry ----------
+
 
 @dataclass
 class JobRecord:
@@ -225,7 +329,7 @@ class JobRecord:
     session_id: Optional[str] = None
     project_root: Optional[str] = None
     auto_approve: bool = False
-    status: str = "pending"   # "pending" | "running" | "done" | "error" | "canceled"
+    status: str = "pending"  # "pending" | "running" | "done" | "error" | "canceled"
     error: Optional[str] = None
     task: Optional[asyncio.Task] = None
     cancel_cb: Optional[Callable[[], None]] = None
@@ -304,17 +408,20 @@ class JobRegistry:
 
 def _sse_pack(event: Dict[str, Any], ev_type: Optional[str] = None) -> str:
     # Canonical SSE line format
-    typ = (ev_type or event.get("type") or "message")
+    typ = ev_type or event.get("type") or "message"
     data = json.dumps(event, ensure_ascii=False)
     return f"event: {typ}\ndata: {data}\n\n"
 
 
 async def _job_event_stream(job: JobRecord) -> AsyncGenerator[bytes, None]:
     """Stream job events with heartbeats."""
+
     last = time.time()
     try:
         # initial hello
-        yield _sse_pack({"type": "hello", "payload": {"job_id": job.job_id}, "ts": time.time()}).encode("utf-8")
+        yield _sse_pack(
+            {"type": "hello", "payload": {"job_id": job.job_id}, "ts": time.time()}
+        ).encode("utf-8")
         while True:
             try:
                 msg = await asyncio.wait_for(job.queue.get(), timeout=HEARTBEAT_SECS)
@@ -326,7 +433,10 @@ async def _job_event_stream(job: JobRecord) -> AsyncGenerator[bytes, None]:
                 # heartbeat
                 hb = {"type": "ping", "payload": {"ts": time.time()}, "ts": time.time()}
                 yield _sse_pack(hb, ev_type="ping").encode("utf-8")
-                if time.time() - last > 5 * HEARTBEAT_SECS and job.status in ("done", "error", "canceled"):
+                if (
+                    time.time() - last > 5 * HEARTBEAT_SECS
+                    and job.status in ("done", "error", "canceled")
+                ):
                     break
     except asyncio.CancelledError:
         # client disconnected
@@ -354,6 +464,7 @@ def _parse_cors_origins() -> tuple[List[str], bool]:
     If AIDEV_CORS_ORIGINS="*", we disable credentials for RFC/CORS compliance.
     Otherwise we allow credentials for specific origins.
     """
+
     frontend = os.getenv("FRONTEND_ORIGIN", "").strip()
     if frontend:
         try:
@@ -374,15 +485,18 @@ def _parse_cors_origins() -> tuple[List[str], bool]:
 
 def _progress_cb_for_job(job_id: str) -> Callable[[str, Dict[str, Any]], None]:
     """Return a callback that publishes canonical events into the job queue."""
+
     def _cb(ev_type: str, payload: Dict[str, Any]) -> None:
         try:
             JobRegistry.publish(job_id, ev_type, payload or {})
         except Exception as e:
             log.debug("progress publish failed: %s", e)
+
     return _cb
 
 
 # ----- Bridge: mirror global _events emissions to a specific job stream -----
+
 
 def _attach_events_bridge(job: JobRecord) -> Optional[Callable[[], None]]:
     def _observer(event: Dict[str, Any]) -> None:
@@ -397,31 +511,38 @@ def _attach_events_bridge(job: JobRecord) -> Optional[Callable[[], None]]:
                 if ev_type == "result":
                     ok = bool(payload.get("ok", True))
                     job.status = "done" if ok else "error"
-                    job.error = None if ok else str(payload.get("error") or payload.get("summary") or "")
+                    job.error = None if ok else str(
+                        payload.get("error") or payload.get("summary") or ""
+                    )
         except Exception:
             pass
+
     # Attach to the global events emitter and return a detach callable.
     detach: Optional[Callable[[], None]] = None
     try:
         # Common API #1: add_observer/remove_observer
         if hasattr(_events, "add_observer"):
             _events.add_observer(_observer)  # type: ignore[attr-defined]
+
             def _detach():
                 try:
                     if hasattr(_events, "remove_observer"):
                         _events.remove_observer(_observer)  # type: ignore[attr-defined]
                 except Exception:
                     pass
+
             detach = _detach
         # Common API #2: subscribe/unsubscribe (token-based)
         elif hasattr(_events, "subscribe"):
             token = _events.subscribe(_observer)  # type: ignore[attr-defined]
+
             def _detach():
                 try:
                     if hasattr(_events, "unsubscribe"):
                         _events.unsubscribe(token)  # type: ignore[attr-defined]
                 except Exception:
                     pass
+
             detach = _detach
         else:
             log.debug("events bridge: no subscribe API on _events")
@@ -431,32 +552,38 @@ def _attach_events_bridge(job: JobRecord) -> Optional[Callable[[], None]]:
 
     return detach
 
+
 # ---------- Summaries helpers (Phase 3) ----------
+
 
 def _coerce_file_item(x: Any) -> Optional[Dict[str, Any]]:
     """
     Normalize various shapes from llm_client responses into:
       {path, ok, summary_len, error}
     """
+
     if isinstance(x, str):
         return {"path": x, "ok": True, "summary_len": 0, "error": ""}
     if not isinstance(x, dict):
         return None
 
-    path = str(
-        x.get("path") or x.get("rel") or x.get("file") or x.get("name") or ""
-    ).strip()
+    path = str(x.get("path") or x.get("rel") or x.get("file") or x.get("name") or "").strip()
 
     ok = x.get("ok")
     if ok is None:
         ok = not bool(x.get("error"))
 
-    s = (x.get("ai_summary") or x.get("summary") or x.get("text") or "")
+    s = x.get("ai_summary") or x.get("summary") or x.get("text") or ""
     if isinstance(s, dict):
         s = s.get("text", "")
     summary_len = int(x.get("summary_len", len(str(s))))
 
-    return {"path": path, "ok": bool(ok), "summary_len": summary_len, "error": str(x.get("error") or "")}
+    return {
+        "path": path,
+        "ok": bool(ok),
+        "summary_len": summary_len,
+        "error": str(x.get("error") or ""),
+    }
 
 
 def _gather_file_list(result: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -468,7 +595,7 @@ def _gather_file_list(result: Dict[str, Any]) -> List[Dict[str, Any]]:
             break
 
     out: List[Dict[str, Any]] = []
-    for item in (candidates or []):
+    for item in candidates or []:
         norm = _coerce_file_item(item)
         if norm and norm.get("path"):
             out.append(norm)
@@ -506,6 +633,7 @@ def _counts_from_files(files: List[Dict[str, Any]], fallback: Dict[str, int] | N
 
 # ---------- App factory ----------
 
+
 def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any]] = None) -> FastAPI:
     app = FastAPI(title="AI-Dev-Bot Server", version="0.3.0", openapi_tags=TAGS_METADATA)
 
@@ -517,7 +645,7 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
             StaticFiles(directory=str(SCHEMAS_DIR)),
             name="schemas",
         )
-        
+
     # CORS (safe defaults; can be narrowed via AIDEV_CORS_ORIGINS or FRONTEND_ORIGIN)
     allow_origins, allow_credentials = _parse_cors_origins()
     app.add_middleware(
@@ -569,7 +697,6 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
     else:
         log.debug("No frontend router found; skipping /api/v1 UI mocks")
 
-    
     # ---------- Jobs API (job-scoped streaming) ----------
 
     @app.post("/jobs/start", tags=["chat"])
@@ -584,12 +711,15 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
           - auto_approve: bool (optional; default False)
           - mode: "auto" | "qa" | "analyze" | "edit" (optional; chat mode hint/override)
         """
+
         message = (payload or {}).get("message", "")
         if not isinstance(message, str) or not message.strip():
-            return JSONResponse(status_code=400, content={"ok": False, "error": "message required"})
+            return JSONResponse(
+                status_code=400, content={"ok": False, "error": "message required"}
+            )
 
         session_id = (payload or {}).get("session_id") or None
-        project_root = (payload or {}).get("project_root") or None
+        payload_project_root = (payload or {}).get("project_root") or None
         args = (payload or {}).get("args") or {}
 
         # Optional chat mode; can be provided either at the top level
@@ -614,32 +744,56 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
 
         # Resolve session once so we can use it for project_root and focus
         session = None
+        # Allow explicit session_id in payload OR a cookie named 'session_id' (UI selects)
+        if not session_id:
+            try:
+                cookie_sid = request.cookies.get("session_id")
+                if cookie_sid:
+                    session_id = cookie_sid
+            except Exception:
+                pass
+
         if session_id:
             try:
+                # prefer ensure for create-if-missing semantics like other code paths
                 session = await SESSIONS.ensure(session_id)
             except Exception:
-                session = None
-
-        # Prefer request-scoped selected project (middleware) over payload/session
-        try:
-            selected = get_selected_project_from_scope(request.scope)
-            if selected:
                 try:
-                    sel_p = Path(selected)
-                    project_root = str(sel_p.resolve())
+                    session = await SESSIONS.get(session_id)
                 except Exception:
-                    log.warning("jobs_start: invalid selected project from request.scope: %r", selected)
-        except Exception:
-            # don't fail; fall back to payload/session
-            pass
+                    session = None
 
-        # If session_id provided and it has a project root, prefer it only if no selected/project_root
-        if not project_root and session is not None:
-            pr = getattr(session, "project_root", None) or getattr(session, "root", None)
-            if pr:
-                project_root = pr
-        if not project_root:
-            project_root = str(Path.cwd())
+        # Resolve project_root with session-first precedence.
+        allow_fallback_cwd = (mode or "").lower() != "edit"
+        project_root, pr_source = _resolve_project_root(
+            request=request,
+            session_obj=session,
+            payload_project_root=payload_project_root,
+            allow_fallback_cwd=allow_fallback_cwd,
+        )
+
+        # For edit/apply workflow: project must be selected (no implicit cwd fallback).
+        if (mode or "").lower() == "edit" and not project_root:
+            log.debug(
+                "jobs_start rejected: mode=edit but no project_root resolved (source=%s)",
+                pr_source,
+            )
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "ok": False,
+                    "error": "project_required",
+                    "message": "No project selected. Select a project in the UI before applying edits.",
+                },
+            )
+
+        # Persist project_root + focus back to the session for continuity
+        # IMPORTANT: do not overwrite with a fallback cwd.
+        if session is not None and project_root:
+            try:
+                setattr(session, "project_root", project_root)
+            except Exception:
+                pass
 
         # Derive focus:
         # 1) explicit args.focus
@@ -661,10 +815,8 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
         else:
             args = {"focus": focus}
 
-        # Persist project_root + focus back to the session for continuity
         if session is not None:
             try:
-                setattr(session, "project_root", project_root)
                 if focus:
                     setattr(session, "focus", focus)
             except Exception:
@@ -686,6 +838,8 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
                 "stage": "job.started",
                 "auto_approve": auto_approve,
                 "detail": f"Auto-approve: {mode_label}",
+                "project_root_source": pr_source,
+                "project_root": project_root,
             },
         )
 
@@ -698,6 +852,11 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
                     detach_bridge = _attach_events_bridge(job)
                 except Exception:
                     detach_bridge = None
+
+                if not project_root:
+                    raise RuntimeError(
+                        "project_root is required to run this job (missing after resolution)"
+                    )
 
                 # Build a DevBotAPI for this job/session so chat tools can do real work.
                 api = DevBotAPI(
@@ -761,11 +920,15 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
         return JSONResponse(content={"ok": ok, "job_id": job_id})
 
     @app.get("/jobs/stream", tags=["events"])
-    async def jobs_stream(job_id: Optional[str] = Query(default=None), session_id: Optional[str] = Query(default=None)):
+    async def jobs_stream(
+        job_id: Optional[str] = Query(default=None),
+        session_id: Optional[str] = Query(default=None),
+    ):
         """
         Primary: stream by job_id.
         Note: session_id is not supported here (was legacy); pass job_id only.
         """
+
         if not job_id:
             if session_id:
                 return JSONResponse(status_code=400, content={"error": "stream requires job_id"})
@@ -773,11 +936,12 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
 
         job = JobRegistry.get(job_id or "")
         if not job:
-            return JSONResponse(status_code=404, content={"error": "unknown_job", "job_id": job_id})
+            return JSONResponse(
+                status_code=404, content={"error": "unknown_job", "job_id": job_id}
+            )
 
         return StreamingResponse(_job_event_stream(job), media_type="text/event-stream")
 
-    
     # ---------- Approval (job-scoped, with session fallback) ----------
 
     # ---------- Approval helpers (job + optional recommendation) ----------
@@ -787,11 +951,8 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
         Accept both 'recommendation_id' and 'rec_id' from the client.
         Returns a normalized rec_id or None.
         """
-        rid = str(
-            payload.get("recommendation_id")
-            or payload.get("rec_id")
-            or ""
-        ).strip()
+
+        rid = str(payload.get("recommendation_id") or payload.get("rec_id") or "").strip()
         return rid or None
 
     async def _decide_approval(job_id: str, approved: bool, rec_id: Optional[str]):
@@ -801,6 +962,7 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
         For now we support job-scoped decisions via ApprovalInbox.decide_job.
         Per-recommendation decisions can be added later via decide_rec.
         """
+
         job = JobRegistry.get(job_id)
         if not job:
             return JSONResponse(
@@ -866,6 +1028,7 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
         Signals that the current approval gate for this job (and optional
         recommendation) has been approved.
         """
+
         job_id = str(payload.get("job_id") or "").strip()
         if not job_id:
             return JSONResponse(
@@ -886,9 +1049,12 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
         Signals that the current approval gate for this job (and optional
         recommendation) has been rejected.
         """
+
         job_id = str(payload.get("job_id") or "").strip()
         if not job_id:
-            return JSONResponse(status_code=400, content={"ok": False, "error": "job_id required"})
+            return JSONResponse(
+                status_code=400, content={"ok": False, "error": "job_id required"}
+            )
 
         rec_id = _extract_rec_id(payload)
         return await _decide_approval(job_id, approved=False, rec_id=rec_id)
@@ -912,6 +1078,7 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
         - 200 + [] if trace file is missing or no matching records.
         - 200 + JSON array of objects for matching records.
         """
+
         # Validate presence
         if not project_id:
             return JSONResponse(
@@ -966,8 +1133,16 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
 
     def _discover_projects(base: Path, depth: int = 6) -> List[Dict[str, Any]]:
         markers = [
-            "package.json", "pyproject.toml", "requirements.txt", "setup.py", "pubspec.yaml",
-            "Cargo.toml", "manage.py", "Pipfile", "go.mod", ".git"
+            "package.json",
+            "pyproject.toml",
+            "requirements.txt",
+            "setup.py",
+            "pubspec.yaml",
+            "Cargo.toml",
+            "manage.py",
+            "Pipfile",
+            "go.mod",
+            ".git",
         ]
         results: List[Dict[str, Any]] = []
         base = base.resolve()
@@ -978,17 +1153,29 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
                     found = [m for m in markers if (p / m).exists()]
                     if found:
                         kind = (
-                            "python" if any((p / m).exists() for m in ["pyproject.toml", "requirements.txt", "setup.py"]) else
-                            "node" if (p / "package.json").exists() else
-                            "flutter" if (p / "pubspec.yaml").exists() else
-                            "repo"
+                            "python"
+                            if any(
+                                (p / m).exists()
+                                for m in [
+                                    "pyproject.toml",
+                                    "requirements.txt",
+                                    "setup.py",
+                                ]
+                            )
+                            else "node"
+                            if (p / "package.json").exists()
+                            else "flutter"
+                            if (p / "pubspec.yaml").exists()
+                            else "repo"
                         )
-                        results.append({
-                            "path": str(p),
-                            "kind": kind,
-                            "markers": found,
-                            "children_count": 0,
-                        })
+                        results.append(
+                            {
+                                "path": str(p),
+                                "kind": kind,
+                                "markers": found,
+                                "children_count": 0,
+                            }
+                        )
             except Exception:
                 continue
         seen = set()
@@ -1007,6 +1194,7 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
         Returns:
             (app_description, compiled_md)
         """
+
         app_description = ""
         compiled_md = ""
         try:
@@ -1038,16 +1226,27 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
         depth = int(payload.get("depth") or 6)
         try:
             items = _discover_projects(Path(root), depth=depth)
-            return JSONResponse(content={"ok": True, "workspace_root": str(Path(root).resolve()), "candidates": items})
+            return JSONResponse(
+                content={
+                    "ok": True,
+                    "workspace_root": str(Path(root).resolve()),
+                    "candidates": items,
+                }
+            )
         except Exception as e:
             log.exception("projects_list failed: %s", e)
-            return JSONResponse(status_code=500, content={"ok": False, "error": "internal_error", "message": str(e)})
+            return JSONResponse(
+                status_code=500,
+                content={"ok": False, "error": "internal_error", "message": str(e)},
+            )
 
     @app.post("/projects/create", tags=["projects"])
     async def projects_create(payload: Dict[str, Any]):
         brief = (payload or {}).get("brief", "").strip()
         if not brief:
-            return JSONResponse(status_code=400, content={"ok": False, "error": "brief required"})
+            return JSONResponse(
+                status_code=400, content={"ok": False, "error": "brief required"}
+            )
         name = (payload or {}).get("project_name") or f"aidev_{int(time.time())}"
         base_dir = Path((payload or {}).get("base_dir") or (Path.cwd() / "projects")).resolve()
         try:
@@ -1068,54 +1267,82 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
             compiled_path.write_text(project_description_md, encoding="utf-8")
 
             # Return with description fields so the UI can hydrate immediately
-            return JSONResponse(content={
-                "ok": True,
-                "project": {
-                    "path": str(proj),
-                    "project_id": str(proj),
-                    "app_description": brief,
-                    "project_description_md": project_description_md,
-                },
-            })
+            return JSONResponse(
+                content={
+                    "ok": True,
+                    "project": {
+                        "path": str(proj),
+                        "project_id": str(proj),
+                        "app_description": brief,
+                        "project_description_md": project_description_md,
+                    },
+                }
+            )
         except Exception as e:
             log.exception("projects_create failed: %s", e)
-            return JSONResponse(status_code=500, content={"ok": False, "error": "internal_error", "message": str(e)})
+            return JSONResponse(
+                status_code=500,
+                content={"ok": False, "error": "internal_error", "message": str(e)},
+            )
 
     @app.post("/projects/select", tags=["projects"])
     async def projects_select(payload: Dict[str, Any]):
         """
-        Body: { project_path: str, session_id?: str }
+        Body: { path?: str, project_root?: str, project_path?: str, session_id?: str }
         Stores selected root into the session (if provided) for UI convenience
         and returns description metadata so the UI can populate app_descrip +
         compiled brief panes.
         """
-        project_path = str(payload.get("project_path") or "").strip()
+
+        # Accept canonical + legacy names
+        project_path = str(
+            payload.get("path")
+            or payload.get("project_root")
+            or payload.get("project_path")
+            or ""
+        ).strip()
+
         if not project_path:
-            return JSONResponse(status_code=400, content={"ok": False, "error": "project_path required"})
+            return JSONResponse(
+                status_code=400, content={"ok": False, "error": "project_path required"}
+            )
+
         session_id = (payload or {}).get("session_id") or None
         root = Path(project_path).resolve()
         if not root.exists():
-            return JSONResponse(status_code=404, content={"ok": False, "error": "path_not_found"})
+            return JSONResponse(
+                status_code=404, content={"ok": False, "error": "path_not_found"}
+            )
+
         if session_id:
             try:
                 session = await SESSIONS.ensure(session_id)
                 if session:
+                    # Write both fields for compatibility across code paths
                     setattr(session, "project_root", str(root))
+                    setattr(session, "project_path", str(root))
+                    # Also set "root" for ultra-legacy callers if your code uses it
+                    try:
+                        setattr(session, "root", str(root))
+                    except Exception:
+                        pass
             except Exception:
                 pass
 
         app_description, compiled_md = _read_project_descriptions(root)
 
-        return JSONResponse(content={
-            "ok": True,
-            "root": str(root),
-            "project": {
-                "path": str(root),
-                "project_id": str(root),
-                "app_description": app_description,
-                "project_description_md": compiled_md,
-            },
-        })
+        return JSONResponse(
+            content={
+                "ok": True,
+                "root": str(root),
+                "project": {
+                    "path": str(root),
+                    "project_id": str(root),
+                    "app_description": app_description,
+                    "project_description_md": compiled_md,
+                },
+            }
+        )
 
     # Compatibility endpoint: also accept /workspaces/select with identical semantics
     app.post("/workspaces/select", tags=["projects"])(projects_select)
@@ -1144,58 +1371,45 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
             files: [ { path, ok, summary_len, error }, ... ].
           }.
         """
+
         # Use the KnowledgeBase path so discovery/skip rules match the UI flows
         try:
+            from .cards import KnowledgeBase
             from .config import load_project_config
             from .structure import discover_structure
-            from .cards import KnowledgeBase
         except Exception:
-            return JSONResponse(content={
-                "ok": False,
-                "error": "kb_import_failed",
-                "counts": {"summarized": 0, "skipped": 0, "failed": 0},
-                "files": [],
-            })
+            return JSONResponse(
+                content={
+                    "ok": False,
+                    "error": "kb_import_failed",
+                    "counts": {"summarized": 0, "skipped": 0, "failed": 0},
+                    "files": [],
+                }
+            )
 
         try:
             log.info("summaries_changed: start payload=%s", safe_json(payload or {}))
 
             # Resolve project_root so we can later read .aidev/cards/*.card.json
-            project_root: Optional[Path] = None
-
-            # Prefer selected project from middleware if present
-            try:
-                selected = get_selected_project_from_scope(request.scope)
-                if selected:
-                    try:
-                        project_root = Path(selected).resolve()
-                    except Exception:
-                        log.warning("summaries_changed: invalid selected project from request.scope: %r", selected)
-                        project_root = None
-            except Exception:
-                project_root = None
-
-            pr_raw = (payload or {}).get("project_root")
-            if project_root is None and pr_raw:
+            session = None
+            sid = (payload or {}).get("session_id")
+            if sid:
                 try:
-                    project_root = Path(pr_raw).resolve()
+                    session = await SESSIONS.get(sid)
                 except Exception:
-                    project_root = None
+                    session = None
 
-            if project_root is None:
-                sid = (payload or {}).get("session_id")
-                if sid:
-                    try:
-                        session = await SESSIONS.get(sid)
-                        pr = getattr(session, "project_root", None) or getattr(session, "root", None)
-                        if pr:
-                            try:
-                                project_root = Path(pr).resolve()
-                            except Exception:
-                                project_root = None
-                    except Exception:
-                        project_root = None
-            project_root = project_root or Path.cwd().resolve()
+            pr_str, pr_source = _resolve_project_root(
+                request=request,
+                session_obj=session,
+                payload_project_root=(payload or {}).get("project_root"),
+                allow_fallback_cwd=True,
+            )
+
+            project_root = Path(pr_str).resolve() if pr_str else Path.cwd().resolve()
+            if pr_source == "cwd":
+                # Avoid persisting a fallback cwd into session.
+                pass
 
             # Summarize via KnowledgeBase (writes .aidev/cards/*.card.json)
             cfg, _ = load_project_config(project_root, None)
@@ -1247,19 +1461,23 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
             }
             if not resp["ok"]:
                 resp["error"] = str(
-                    result.get("error") or result.get("message") or "summaries_changed_failed"
+                    result.get("error")
+                    or result.get("message")
+                    or "summaries_changed_failed"
                 )
 
             log.info("summaries_changed: done ok=%s counts=%s", resp["ok"], resp["counts"])
             return JSONResponse(content=resp)
         except Exception as e:
             log.exception("summaries_changed: exception")
-            return JSONResponse(content={
-                "ok": False,
-                "error": str(e),
-                "counts": {"summarized": 0, "skipped": 0, "failed": 0},
-                "files": [],
-            })
+            return JSONResponse(
+                content={
+                    "ok": False,
+                    "error": str(e),
+                    "counts": {"summarized": 0, "skipped": 0, "failed": 0},
+                    "files": [],
+                }
+            )
 
     # ---------- Pre-apply checks (safe, never throws to client) ----------
 
@@ -1273,32 +1491,62 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
         }
         Returns: { passed: bool, details: [{runtime, ok, logs_tail, ...}] }
         """
+
         try:
             job_id = (payload or {}).get("job_id")
-            project_root = (payload or {}).get("project_root")
             patches = (payload or {}).get("patches") or []
 
-            # Prefer selected project from the middleware if present
-            try:
-                selected = get_selected_project_from_scope(request.scope)
-                if selected:
-                    try:
-                        project_root = str(Path(selected).resolve())
-                    except Exception:
-                        log.warning("checks_preapply: invalid selected project from request.scope: %r", selected)
-            except Exception:
-                pass
+            # Resolve project_root in a consistent way.
+            session = None
+            sid = (payload or {}).get("session_id")
+            # If client didn't include explicit session_id, accept the UI cookie 'session_id' as a
+            # secondary/session-selection hint (workspaces.select_project sets this cookie).
+            if not sid:
+                try:
+                    sid = request.cookies.get("session_id")
+                except Exception:
+                    sid = None
 
-            job: Optional[JobRecord] = None
-            if job_id and not project_root:
+            if sid:
+                try:
+                    session = await SESSIONS.get(sid)
+                except Exception:
+                    session = None
+
+            # For preapply: if patches are present this is part of an apply/edit flow and must
+            # not fall back to CWD. Enforce allow_fallback_cwd=False in that case.
+            allow_fallback_cwd = not bool(patches)
+
+            pr_str, pr_source = _resolve_project_root(
+                request=request,
+                session_obj=session,
+                payload_project_root=(payload or {}).get("project_root"),
+                allow_fallback_cwd=allow_fallback_cwd,
+            )
+
+            # If this check is associated with a job and no explicit project_root was
+            # provided via session/payload/header, fall back to the job record.
+            if job_id and pr_source in ("none", "cwd"):
                 job = JobRegistry.get(job_id)
                 if job and job.project_root:
-                    project_root = job.project_root
+                    pr_str = job.project_root
 
-            if not project_root:
-                project_root = str(Path.cwd())
+            # If patches were provided and we still don't have a resolved project root,
+            # reject the request. This prevents accidental writes into the bot repo.
+            if patches and not pr_str:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "passed": False,
+                        "error": "project_required",
+                        "message": "No project selected. Select a project in the UI before applying edits.",
+                    },
+                )
 
-            root_path = Path(project_root).resolve()
+            if not pr_str:
+                pr_str = str(Path.cwd().resolve())
+
+            root_path = Path(pr_str).resolve()
 
             passed: bool = True
             details: List[Dict[str, Any]] = []
@@ -1321,11 +1569,7 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
                 # Future-proof: accept dict shape {ok, details} if we ever switch
                 elif isinstance(res, dict):
                     passed = bool(res.get("ok", res.get("passed", True)))
-                    raw_details = (
-                        res.get("details")
-                        or res.get("runs")
-                        or []
-                    )
+                    raw_details = res.get("details") or res.get("runs") or []
                     if isinstance(raw_details, list):
                         details = raw_details
                     elif raw_details:
@@ -1383,7 +1627,9 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
             return JSONResponse(content={"items": items, "count": len(items)})
         except Exception as e:
             log.exception("api_recommendations failed: %s", e)
-            return JSONResponse(status_code=500, content={"error": "internal_error", "message": str(e)})
+            return JSONResponse(
+                status_code=500, content={"error": "internal_error", "message": str(e)}
+            )
 
     # ---------- Static UI ----------
 
@@ -1420,7 +1666,9 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
                     loop = asyncio.get_running_loop()
 
                     def cb(ev: str, payload: Dict[str, Any]):
-                        loop.call_soon_threadsafe(q.put_nowait, {"type": ev, **(payload or {})})
+                        loop.call_soon_threadsafe(
+                            q.put_nowait, {"type": ev, **(payload or {})}
+                        )
 
                     progress_cb = cb
             except Exception as e:
@@ -1448,24 +1696,35 @@ def create_app(static_ui_dir: Optional[Path] = None, cfg: Optional[Dict[str, Any
             if progress_cb:
                 progress_cb("project_map_end", {"root": str(project_root)})
         except Exception as e:
-            err = {"error": "project_map_failed", "message": str(e), "trace": traceback.format_exc()}
+            err = {
+                "error": "project_map_failed",
+                "message": str(e),
+                "trace": traceback.format_exc(),
+            }
             if progress_cb:
                 progress_cb("error", {"where": "project_map", **err})
             return JSONResponse(status_code=500, content=err)
 
         out = project_root / (path or ".aidev/project_map.json")
         if not out.exists():
-            msg = {"error": "project_map_missing", "message": "project_map.json not generated"}
+            msg = {
+                "error": "project_map_missing",
+                "message": "project_map.json not generated",
+            }
             if progress_cb:
                 progress_cb("error", {"where": "project_map", **msg})
             return JSONResponse(status_code=500, content=msg)
 
         if download:
-            return FileResponse(str(out), filename="project_map.json", media_type="application/json")
+            return FileResponse(
+                str(out), filename="project_map.json", media_type="application/json"
+            )
         try:
             return JSONResponse(content=json.loads(out.read_text(encoding="utf-8")))
         except Exception:
-            return FileResponse(str(out), filename="project_map.json", media_type="application/json")
+            return FileResponse(
+                str(out), filename="project_map.json", media_type="application/json"
+            )
 
     return app
 
@@ -1475,8 +1734,11 @@ app = create_app()
 
 def run(args_ns, cfg) -> int:
     import uvicorn
+
     _app = create_app(cfg=cfg)
     host = os.getenv("AIDEV_HOST", "127.0.0.1")
     port = int(os.getenv("AIDEV_PORT", "8080"))
-    uvicorn.run(_app, host=host, port=port, log_level=os.getenv("AIDEV_LOGLEVEL", "info"))
+    uvicorn.run(
+        _app, host=host, port=port, log_level=os.getenv("AIDEV_LOGLEVEL", "info")
+    )
     return 0

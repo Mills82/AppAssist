@@ -1160,6 +1160,25 @@ class LLMClient:
         return self._with_retries(_call)
 
     # --------------- High-level: compiled project brief ---------------
+    def _parse_project_metadata(meta_val: Any) -> Dict[str, Any]:
+        """
+        project_metadata is schema'd as a JSON-serialized string for Structured Outputs.
+        Convert it back to a dict for internal use.
+        Back-compat: accept dict directly.
+        """
+        if isinstance(meta_val, dict):
+            return meta_val
+        if isinstance(meta_val, str):
+            s = meta_val.strip()
+            if not s:
+                return {}
+            try:
+                obj = json.loads(s)
+                return obj if isinstance(obj, dict) else {}
+            except Exception:
+                return {}
+        return {}
+
     def compile_project_brief(
         self,
         app_text: str,
@@ -1167,7 +1186,7 @@ class LLMClient:
         system: Optional[str] = None,
         max_tokens: Optional[int] = None,
         schema: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[str, Dict[str, Any], ChatResponse]:
+    ) -> Tuple[str, Dict[str, Any], "ChatResponse"]:
         if schema is None:
             schema = project_brief_json_schema()
 
@@ -1177,13 +1196,16 @@ class LLMClient:
             "The user will paste the contents of app_descrip.txt: a free-form description of a software project.\n\n"
             "Your job is to:\n"
             "1) Rewrite it into a clean, concise Markdown project brief (project_description_md).\n"
-            "2) Emit a small machine-readable metadata object (project_metadata).\n\n"
-            "Respond with JSON ONLY, matching this schema:\n"
+            "2) Emit a small machine-readable metadata JSON object, but RETURN IT AS A STRING FIELD (project_metadata).\n\n"
+            "Respond with JSON ONLY, matching this schema exactly:\n"
             "{\n"
             '  "project_description_md": "<markdown brief>",\n'
-            '  "project_metadata": { ... arbitrary additional keys ... }\n'
-            "}\n"
-            "Do not wrap the JSON in markdown fences. Do not add extra top-level fields."
+            '  "project_metadata": "<JSON string of an object, e.g. {} or {\\"tech_stack\\":\\"react\\"}>"\n'
+            "}\n\n"
+            "Rules:\n"
+            "- project_metadata MUST be a JSON-serialized string of an object.\n"
+            "- Do NOT include extra top-level fields.\n"
+            "- Do NOT wrap JSON in markdown fences.\n"
         )
         sys_prompt = system or file_prompt or default_system
 
@@ -1202,9 +1224,7 @@ class LLMClient:
             return md, {}, resp
 
         md = str(data.get("project_description_md") or "").strip()
-        meta = data.get("project_metadata")
-        if not isinstance(meta, dict):
-            meta = {}
+        meta = _parse_project_metadata(data.get("project_metadata"))
 
         if not md:
             md = (app_text or "").strip()
@@ -2944,22 +2964,53 @@ def diff_json_schema() -> Dict[str, Any]:
 
 
 def project_brief_json_schema() -> Dict[str, Any]:
-    try:
-        from .schemas import project_brief_json_schema as s
-    except Exception:
-        s = None
-    if s:
+    """
+    Canonical schema for brief_compile Structured Outputs.
+
+    IMPORTANT:
+    - Structured Outputs requires object schemas to explicitly set additionalProperties: false.
+    - Free-form metadata objects (additionalProperties: true) are not compatible with strict schemas.
+      Represent metadata as JSON-serialized string instead.
+    """
+
+    # 1) Prefer an on-disk schema like the rest of the repo.
+    schema_path = Path(__file__).resolve().parent / "schemas" / "project_brief.schema.json"
+    if schema_path.exists():
         try:
-            return s()
+            return json.loads(schema_path.read_text(encoding="utf-8"))
         except Exception:
+            # fall through to embedded schema
             pass
+
+    # 2) Optional: if you later add aidev/schemas.py helper that returns this schema, allow it.
+    # (You said it doesn't exist today, so this is best-effort only.)
+    try:
+        from . import schemas as _schemas  # type: ignore
+        fn = getattr(_schemas, "project_brief_json_schema", None)
+        if callable(fn):
+            out = fn()
+            if isinstance(out, dict):
+                return out
+    except Exception:
+        pass
+
+    # 3) Embedded fallback (kept in sync with project_brief.schema.json).
     return {
-        "$id": "project_brief_v1",
+        "$id": "project_brief",
         "title": "ProjectBrief",
         "type": "object",
-        "properties": {"project_description_md": {"type": "string"}, "project_metadata": {"type": "object", "additionalProperties": True}},
+        "additionalProperties": False,
         "required": ["project_description_md", "project_metadata"],
-        "additionalProperties": True,
+        "properties": {
+            "project_description_md": {
+                "type": "string",
+                "description": "Markdown project brief.",
+            },
+            "project_metadata": {
+                "type": "string",
+                "description": "JSON-serialized metadata object (string). Use '{}' if none.",
+            },
+        },
     }
 
 
@@ -3140,22 +3191,44 @@ async def summarize_changed(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 # -------------------- Support: project root, file IO, discovery --------------------
 async def _resolve_project_root_from_payload(payload: Dict[str, Any]) -> str:
-    for k in ("project_root", "root"):
-        v = payload.get(k)
+    # 1) Explicit payload fields (canonical + legacy)
+    for k in ("project_root", "project_path", "root"):
+        v = (payload or {}).get(k)
         if v:
-            return str(Path(v).resolve())
+            try:
+                return str(Path(str(v)).expanduser().resolve())
+            except Exception:
+                # keep searching
+                pass
 
-    sess_id = payload.get("session_id")
+    # 2) Session-derived (if session_id present)
+    sess_id = (payload or {}).get("session_id")
     if sess_id:
         try:
             from .session_store import SESSIONS  # type: ignore
 
-            session = await SESSIONS.get(sess_id)
-            pr = getattr(session, "project_root", None) or getattr(session, "root", None)
-            if pr:
-                return str(Path(pr).resolve())
+            # tolerate different session store APIs
+            session = None
+            ensure_fn = getattr(SESSIONS, "ensure", None)
+            if callable(ensure_fn):
+                session = await ensure_fn(sess_id)
+            else:
+                get_fn = getattr(SESSIONS, "get", None)
+                if callable(get_fn):
+                    session = await get_fn(sess_id)
+
+            if session is not None:
+                pr = (
+                    getattr(session, "project_root", None)
+                    or getattr(session, "project_path", None)
+                    or getattr(session, "root", None)
+                )
+                if pr:
+                    return str(Path(str(pr)).expanduser().resolve())
         except Exception:
             pass
+
+    # 3) Last resort fallback
     return str(Path.cwd().resolve())
 
 

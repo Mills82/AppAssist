@@ -1,6 +1,7 @@
 # aidev/routes/workspaces.py
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import re
@@ -11,7 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, Query, Header, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -1137,6 +1138,7 @@ def list_projects(
 async def select_project(
     body: SelectRequest,
     session_id: Optional[str] = Query(default=None),
+    response: Response = None,
     sessions: SessionStore = Depends(get_session_store),
 ) -> SelectResponse | JSONResponse:
     try:
@@ -1157,7 +1159,51 @@ async def select_project(
                 detail="Missing path (provide 'path' or legacy 'project_path').",
             )
 
-        session = await sessions.get(sid)
+        # Try to obtain or create a session in a tolerant way. Some SessionStore
+        # implementations expose 'ensure', others 'get'. If a create method exists
+        # prefer that when a session is missing.
+        session = None
+        try:
+            ensure_fn = getattr(sessions, "ensure", None)
+            if callable(ensure_fn):
+                session = await ensure_fn(sid)
+            else:
+                get_fn = getattr(sessions, "get", None)
+                if callable(get_fn):
+                    session = await get_fn(sid)
+        except Exception:
+            # tolerate and continue to fallback creation below
+            session = None
+
+        if session is None:
+            # Try to create a session if the store offers a create/new API.
+            created = False
+            try:
+                create_fn = getattr(sessions, "create", None) or getattr(sessions, "new", None)
+                if callable(create_fn):
+                    maybe = create_fn(sid) if create_fn.__code__.co_argcount >= 1 else create_fn()
+                    if inspect.isawaitable(maybe):
+                        session = await maybe
+                    else:
+                        session = maybe
+                    created = session is not None
+            except Exception:
+                session = None
+
+            if not created and session is None:
+                # Could not obtain or create a session; instruct the client to re-select.
+                logger.warning(
+                    "session not found and could not be created",
+                    ctx={"session_id": sid},
+                )
+                return _json_error(
+                    project_root=None,
+                    where="select",
+                    status=400,
+                    message=(
+                        "Invalid or expired session. Please re-select a project in the UI and try again."
+                    ),
+                )
 
         p = Path(raw_path).expanduser().resolve()
         if not p.exists() or not p.is_dir():
@@ -1191,25 +1237,168 @@ async def select_project(
             selected = ProjectCandidateModel.from_cand(chosen)
             selected.project_id = proj_id  # ensure stable id
 
-        session.project_path = str(p)
-        session.meta.setdefault("project", {}).update(selected.dict())
+        # Persist selection into the session object (support both names)
+        try:
+            session.project_path = str(p)
+        except Exception:
+            try:
+                setattr(session, "project_path", str(p))
+            except Exception:
+                pass
+
+        try:
+            session.project_root = str(p)
+        except Exception:
+            try:
+                setattr(session, "project_root", str(p))
+            except Exception:
+                pass
+
+        # Ultra-legacy: some code may still look at session.root
+        try:
+            session.root = str(p)
+        except Exception:
+            try:
+                setattr(session, "root", str(p))
+            except Exception:
+                pass
+
+        try:
+            meta_map = getattr(session, "meta", None)
+            if meta_map is None:
+                try:
+                    session.meta = {}
+                    meta_map = session.meta
+                except Exception:
+                    # Some session types may not allow attribute assignment; ignore
+                    meta_map = None
+            if meta_map is not None:
+                meta_map.setdefault("project", {}).update(selected.dict())
+        except Exception:
+            # Best-effort: continue even if meta cannot be updated in-place
+            pass
+
+        # Persist session (tolerant to different SessionStore implementations).
+        # This must happen BEFORE emitting project_selected to avoid race conditions.
+        persisted = False
+
+        async def _maybe_await_call(fn, *args, **kwargs):
+            try:
+                res = fn(*args, **kwargs)
+                if inspect.isawaitable(res):
+                    return await res
+                return res
+            except Exception:
+                raise
+
+        try:
+            # Try a broad set of common persistence APIs in order of likelihood.
+            for name in ("save", "update", "persist", "put", "set", "store", "write"):
+                fn = getattr(sessions, name, None)
+                if callable(fn):
+                    # Prefer signatures that accept (session) or (id, session)
+                    try:
+                        # Try (session,) first
+                        await _maybe_await_call(fn, session)
+                        persisted = True
+                        break
+                    except TypeError:
+                        # try (id, session)
+                        sid_val = getattr(session, "id", sid)
+                        await _maybe_await_call(fn, sid_val, session)
+                        persisted = True
+                        break
+            # Last resorts: set(id, session) with explicit names
+            if not persisted:
+                for name in ("set", "put"):
+                    fn = getattr(sessions, name, None)
+                    if callable(fn):
+                        sid_val = getattr(session, "id", sid)
+                        await _maybe_await_call(fn, sid_val, session)
+                        persisted = True
+                        break
+
+            if not persisted:
+                # Do not silently proceed: without persistence downstream requests may use
+                # a default root (potentially the AI Dev Bot repo). Instruct user to re-select.
+                logger.warning(
+                    "session persistence API not found; refusing to select project",
+                    ctx={"session_id": getattr(session, "id", sid)},
+                )
+                return _json_error(
+                    project_root=None,
+                    where="select",
+                    status=500,
+                    message=(
+                        "Session store does not support persistence (save/update/set/put missing); cannot select project."
+                        " Please re-select a project in the UI and try again."
+                    ),
+                )
+        except Exception as persist_err:
+            logger.warning(
+                "session persistence failed; refusing to select project",
+                ctx={"session_id": getattr(session, "id", sid), "err": type(persist_err).__name__},
+                exc=persist_err,
+            )
+            return _json_error(
+                project_root=None,
+                where="select",
+                status=500,
+                message=(
+                    f"session save failed: {type(persist_err).__name__}: {persist_err}."
+                    " Please re-select a project in the UI and try again."
+                ),
+                exc=persist_err,
+            )
+
+        # Set session cookie for clients to use in follow-up requests. Keep compatibility
+        # with older middleware by also setting the canonical AIDEV_SESSION_COOKIE if present.
+        try:
+            if response is not None:
+                # Primary cookie as chosen for UI selection
+                response.set_cookie(
+                    "session_id",
+                    getattr(session, "id", sid),
+                    httponly=True,
+                    samesite="lax",
+                )
+                # Also set legacy/canonical cookie name if configured to reduce mismatch risk
+                aidev_cookie_name = os.getenv("AIDEV_SESSION_COOKIE", "aidev_session")
+                if aidev_cookie_name and aidev_cookie_name != "session_id":
+                    try:
+                        response.set_cookie(
+                            aidev_cookie_name,
+                            getattr(session, "id", sid),
+                            httponly=True,
+                            samesite="lax",
+                        )
+                    except Exception:
+                        # best-effort
+                        pass
+        except Exception as cookie_err:
+            # Best-effort: cookie failure should not prevent selection.
+            logger.warning(
+                "failed to set session cookie",
+                ctx={"session_id": getattr(session, "id", sid), "err": type(cookie_err).__name__},
+                exc=cookie_err,
+            )
 
         ev_project_selected(
             root=str(p),
-            session_id=session.id,
+            session_id=getattr(session, "id", sid),
             project_id=proj_id,
         )
         logger.info(
             "workspace_selected",
             ctx={
                 "path": str(p),
-                "session_id": session.id,
+                "session_id": getattr(session, "id", sid),
                 "project_id": proj_id,
             },
         )
 
         return SelectResponse(
-            session_id=session.id,
+            session_id=getattr(session, "id", sid),
             selected=selected,
             project_id=proj_id,
         )

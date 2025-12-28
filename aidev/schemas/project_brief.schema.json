@@ -1,0 +1,17 @@
+{
+  "$id": "project_brief",
+  "title": "ProjectBrief",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["project_description_md", "project_metadata"],
+  "properties": {
+    "project_description_md": {
+      "type": "string",
+      "description": "Markdown project brief."
+    },
+    "project_metadata": {
+      "type": "string",
+      "description": "JSON-serialized metadata object (string). Use '{}' if none."
+    }
+  }
+}

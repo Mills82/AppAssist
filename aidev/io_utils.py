@@ -31,6 +31,16 @@ except Exception:  # pragma: no cover - tests/runtime may not have new logger ye
     alogger = None  # type: ignore
 
 
+def _require_project_root(project_root: Optional[Path], caller: str) -> Path:
+    """Require an explicit project_root for any on-disk IO.
+
+    This module must not fall back to CWD or the bot repo root implicitly.
+    """
+    if project_root is None:
+        raise ValueError(f"io_utils.{caller}: explicit project_root Path is required for safe writes")
+    return Path(project_root).resolve()
+
+
 def _emit_structured(level: str, op: str, meta: Dict[str, Any], msg: Optional[str] = None) -> None:
     """
     Emit a structured log record.
@@ -675,7 +685,8 @@ def write_text_logged(
 
     Diff is always computed against the actual target's current content (not preserve_*).
     """
-    target = _resolve_safe_path(project_root, path)
+    base = _require_project_root(project_root, "write_text_logged")
+    target = _resolve_safe_path(base, path)
 
     existed_before = target.exists()
 
@@ -685,7 +696,7 @@ def write_text_logged(
     # Determine newline style from preserve_newlines_from (if provided) else target.
     nl_src = preserve_newlines_from or target
     try:
-        nl_src = _resolve_safe_path(project_root, nl_src)
+        nl_src = _resolve_safe_path(base, nl_src)
     except Exception:
         nl_src = target
     _nl_text, _nl_enc, nl_style, _nl_bom, _nl_raw = _read_text_and_meta_if_exists(nl_src)
@@ -693,7 +704,7 @@ def write_text_logged(
     # Determine BOM/encoding from preserve_encoding_from (if provided) else target.
     enc_src = preserve_encoding_from or target
     try:
-        enc_src = _resolve_safe_path(project_root, enc_src)
+        enc_src = _resolve_safe_path(base, enc_src)
     except Exception:
         enc_src = target
     _enc_text, _enc_enc, _enc_nl, had_bom, _enc_raw = _read_text_and_meta_if_exists(enc_src)
@@ -719,11 +730,11 @@ def write_text_logged(
 
     # Skip true no-ops (avoids pointless writes + churn)
     if _normalize_newlines_for_edit(old_text) == content_norm:
-        rel = str(target.relative_to(Path(project_root).resolve()))
+        rel = str(target.relative_to(base))
         _emit_structured(
             "info",
             "write_noop_skip",
-            {"path": rel, "rec_id": rec_id, "project_root": str(Path(project_root).resolve())},
+            {"path": rel, "rec_id": rec_id, "project_root": str(base)},
             msg=f"No-op: {rel}",
         )
         try:
@@ -755,7 +766,7 @@ def write_text_logged(
         except Exception:
             bytes_written = 0
 
-    rel = str(target.relative_to(Path(project_root).resolve()))
+    rel = str(target.relative_to(base))
 
     _emit_structured(
         "info",
@@ -772,7 +783,7 @@ def write_text_logged(
             "lines": total_lines,
             "unchanged": (added == 0 and removed == 0 and replaced == 0),
             "rec_id": rec_id,
-            "project_root": str(Path(project_root).resolve()),
+            "project_root": str(base),
         },
         msg=f"Wrote: {rel}",
     )
@@ -790,7 +801,7 @@ def write_text_logged(
                     "lines": total_lines,
                     "unchanged": (added == 0 and removed == 0 and replaced == 0),
                     "rec_id": rec_id,
-                    "project_root": str(Path(project_root).resolve()),
+                    "project_root": str(base),
                 },
             )
     except Exception:
@@ -833,8 +844,9 @@ def write_json_logged(
     stats: "Orchestrator" | None = None,
     rec_id: str | None = None,
 ) -> None:
+    base = _require_project_root(project_root, "write_json_logged")
     text = _stable_json_text(obj)
-    write_text_logged(path, text, project_root=project_root, st=st, stats=stats, rec_id=rec_id)
+    write_text_logged(path, text, project_root=base, st=st, stats=stats, rec_id=rec_id)
 
 
 def save_text(project_root: Path, p: Path, text: str) -> None:
@@ -842,13 +854,15 @@ def save_text(project_root: Path, p: Path, text: str) -> None:
     Save text to `p`, but only if `p` resolves inside `project_root`.
     This function is root-locked for safety; callers must provide project_root.
     """
-    target = _resolve_safe_path(project_root, p)
+    base = _require_project_root(project_root, "save_text")
+    target = _resolve_safe_path(base, p)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(text, encoding="utf-8", errors="replace")
 
 
 def save_json(project_root: Path, p: Path, data: dict) -> None:
-    target = _resolve_safe_path(project_root, p)
+    base = _require_project_root(project_root, "save_json")
+    target = _resolve_safe_path(base, p)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(_stable_json_text(data), encoding="utf-8")
 
@@ -1132,17 +1146,13 @@ def apply_edits_transactionally(
 ) -> None:
     """
     Apply a list of edit objects (JSONL items) in one transaction.
-    """
-    root = Path(root).resolve()
 
-    # Resolve project_root safely:
-    # - if absolute, use it
-    # - if relative, resolve relative to `root`
-    if project_root is not None:
-        pr = Path(project_root)
-        base = pr.resolve() if pr.is_absolute() else (root / pr).resolve()
-    else:
-        base = root
+    NOTE: For safety, this is explicitly root-locked to `project_root`.
+    Callers must pass an explicit `project_root` (selected project directory).
+    """
+    _ = Path(root).resolve()  # keep legacy param for signature compatibility; no longer used for root selection
+
+    base = _require_project_root(project_root, "apply_edits_transactionally")
 
     _emit_structured("info", "apply_edits_start", {"dry_run": dry_run, "root": str(base), "raw_edits": len(edits)})
 
@@ -1151,6 +1161,17 @@ def apply_edits_transactionally(
     _validate_edits(edits)
 
     _emit_structured("info", "apply_edits_coalesced", {"paths": [str(e.get("path")) for e in edits]})
+
+    # Pre-resolve all edit paths to ensure deterministic rejection of absolute/traversal
+    # paths before any side-effects or staging occurs. _resolve_safe_path will raise
+    # ValueError with a deterministic message on invalid targets; we let that propagate.
+    resolved_paths: Dict[str, Path] = {}
+    for e in edits:
+        rel = str(e.get("path") or "").strip()
+        if not rel:
+            raise ValueError("io_utils.apply_edits_transactionally: edit path is required")
+        resolved = _resolve_safe_path(base, rel)
+        resolved_paths[rel] = resolved
 
     def _get_patch(e: Dict[str, Any]) -> str:
         p = e.get("patch_unified")
@@ -1164,11 +1185,7 @@ def apply_edits_transactionally(
     if dry_run:
         for e in edits:
             rel = str(e.get("path") or "").strip()
-            try:
-                target = _resolve_safe_path(base, rel)
-            except ValueError:
-                _emit_structured("warning", "apply_edits_outside_root", {"path": rel, "root": str(base)})
-                continue
+            target = resolved_paths[rel]
 
             old_text, _enc, _nl, _had_bom, raw = _read_text_and_meta_if_exists(target)
             if raw and _is_probably_binary(raw) and not allow_binary:
@@ -1238,12 +1255,7 @@ def apply_edits_transactionally(
             rel = str(e.get("path") or "").strip()
             _emit_structured("info", "apply_edits_consider", {"path": rel, "rec_id": e.get("rec_id")})
 
-            try:
-                target = _resolve_safe_path(base, rel)
-            except ValueError:
-                _emit_structured("warning", "apply_edits_outside_root", {"path": rel, "root": str(base)})
-                pending_skipped += 1
-                continue
+            target = resolved_paths[rel]
 
             old_text, _old_enc, old_nl, had_bom, raw = _read_text_and_meta_if_exists(target)
             existed_before = target.exists()
@@ -1395,10 +1407,13 @@ def write_code_under_root(
     If `tx` is provided, the write is staged and committed with the transaction.
     Otherwise, it is atomically replaced in place (per-file).
 
-    NOTE: `root` is treated as the project_root and is enforced via path-safety.
+    NOTE: `root` is treated as the explicit project_root and is enforced via path-safety.
+    Callers must not pass an implicit CWD-rooted path.
     """
+    project_root = _require_project_root(root, "write_code_under_root")
+
     try:
-        target = _resolve_safe_path(root, rel_path)
+        target = _resolve_safe_path(project_root, rel_path)
     except ValueError:
         _emit_structured("warning", "write_code_refuse", {"path": rel_path})
         if stats:
@@ -1440,7 +1455,7 @@ def write_code_under_root(
                 {"path": str(target), "added": a, "removed": r, "replaced": rep, "rec_id": rec_id},
             )
             if st is not None:
-                st.trace.write("write_staged", "write_text", {"path": str(target), "added": a, "removed": r, "replaced": rep, "rec_id": rec_id, "project_root": str(Path(root).resolve())})
+                st.trace.write("write_staged", "write_text", {"path": str(target), "added": a, "removed": r, "replaced": rep, "rec_id": rec_id, "project_root": str(Path(project_root).resolve())})
         except Exception:
             pass
         return
@@ -1449,7 +1464,7 @@ def write_code_under_root(
     write_text_logged(
         target,
         _normalize_newlines_for_edit(content),
-        project_root=root,
+        project_root=project_root,
         st=st,
         stats=stats,
         rec_id=rec_id,
@@ -1477,8 +1492,10 @@ def write_json_cache(
     This function writes UTF-8 JSON using os.replace for atomicity and emits
     structured logs and optional trace records for observability.
     """
+    base = _require_project_root(project_root, "write_json_cache")
+
     try:
-        target = _resolve_safe_path(project_root, rel_path)
+        target = _resolve_safe_path(base, rel_path)
     except ValueError:
         _emit_structured("warning", "cache_write_refuse", {"path": str(rel_path)})
         if stats:
@@ -1506,7 +1523,7 @@ def write_json_cache(
             except Exception:
                 bytes_written = 0
 
-        rel = str(target.relative_to(Path(project_root).resolve()))
+        rel = str(target.relative_to(base))
         _emit_structured(
             "info",
             "cache_write",
@@ -1515,7 +1532,7 @@ def write_json_cache(
                 "bytes_written": bytes_written,
                 "encoding": enc,
                 "rec_id": rec_id,
-                "project_root": str(Path(project_root).resolve()),
+                "project_root": str(base),
             },
             msg=f"Wrote cache: {rel}",
         )
@@ -1549,8 +1566,10 @@ def read_json_cache(project_root: Path, rel_path: Union[str, Path]) -> Optional[
     Read a JSON cache artifact if it exists and appears to be a text JSON file.
     Returns the parsed object or None if missing, binary, or invalid JSON.
     """
+    base = _require_project_root(project_root, "read_json_cache")
+
     try:
-        target = _resolve_safe_path(project_root, rel_path)
+        target = _resolve_safe_path(base, rel_path)
     except ValueError:
         _emit_structured("warning", "cache_read_refuse", {"path": str(rel_path)})
         return None
@@ -1600,7 +1619,7 @@ def deterministic_repo_scan(
       - Skips symlinks (prevents scanning outside root via symlink tricks).
       - Uses resolved containment checks before returning paths.
     """
-    base = Path(project_root).resolve()
+    base = _require_project_root(project_root, "deterministic_repo_scan")
     excluded = set(exclude_dirs or [".git", ".aidev", "__pycache__"])
 
     entries: List[Tuple[str, int]] = []  # (posix_rel_path, size)
@@ -1683,7 +1702,7 @@ def gather_basic_evidence(
     allow_full_hash: bool = False,
     rec_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    base = Path(project_root).resolve()
+    base = _require_project_root(project_root, "gather_basic_evidence")
 
     # Normalize/validate provided paths.
     if paths is None:

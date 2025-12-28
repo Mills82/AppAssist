@@ -14,9 +14,19 @@ class Session:
     last_intent: Optional[dict] = None
     last_steps: Optional[List[dict]] = None
     focus: str = ""
+
+    # Legacy selection field (keep)
     project_path: Optional[str] = None
+
+    # Canonical selection field (new)
+    project_root: Optional[str] = None
+
+    # Ultra-legacy alias some code checks (optional but helps)
+    root: Optional[str] = None
+
     # Any state you want across calls (e.g., proposed edits summaries)
     meta: Dict[str, Any] = field(default_factory=dict)
+
 
 
 class SessionStore:
@@ -55,6 +65,32 @@ class SessionStore:
                 # Resilience after reload: recreate a fresh session object with same id
                 return await self._create_with_id(sid)
         return await self.create()
+
+    # ----------------------------
+    # Persistence-compatible API
+    # ----------------------------
+
+    async def save(self, session: Session) -> None:
+        """Persist a session (in-memory store: write into dict)."""
+        async with self._lock:
+            self._sessions[session.id] = session
+
+    async def update(self, sid: str, session: Session) -> None:
+        """Persist update by explicit id."""
+        async with self._lock:
+            self._sessions[sid] = session
+
+    async def set(self, sid: str, session: Session) -> None:
+        """Alias for update()."""
+        await self.update(sid, session)
+
+    async def put(self, sid: str, session: Session) -> None:
+        """Alias for update()."""
+        await self.update(sid, session)
+
+    async def persist(self, session: Session) -> None:
+        """Alias for save()."""
+        await self.save(session)
 
 SESSIONS = SessionStore()
 

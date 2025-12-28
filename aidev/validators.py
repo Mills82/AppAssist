@@ -160,9 +160,16 @@ CREATE_PROJECT_REQUEST_SCHEMA: Dict[str, Any] = {
 
 SELECT_PROJECT_REQUEST_SCHEMA: Dict[str, Any] = {
     "type": "object",
-    "properties": {"project_path": {"type": "string"}},
-    "required": ["project_path"],
-    "additionalProperties": False,
+    "properties": {
+        "session_id": {"type": ["string", "null"]},
+        "project_path": {"type": ["string", "null"]},
+        "path": {"type": ["string", "null"]},
+        "project_root": {"type": ["string", "null"]},
+        "root": {"type": ["string", "null"]},
+    },
+    # We can’t express “oneOf required” easily in your simple helper,
+    # so keep it permissive here and enforce in route code.
+    "additionalProperties": True,
 }
 
 UPDATE_DESCRIPTIONS_REQUEST_SCHEMA: Dict[str, Any] = {
