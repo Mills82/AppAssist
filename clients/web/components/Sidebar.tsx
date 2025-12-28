@@ -7,7 +7,9 @@ Provides: ProjectSelector, CurrentRun status, Approvals badge, RecentRuns list.
 
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+
+type Project = { id: string; name: string };
 
 export type RecentRun = {
   id: string;
@@ -26,7 +28,11 @@ export interface SidebarProps {
   onSelectProject?: (project: { id: string; name?: string } | string | null) => void;
   onSelectRun?: (run: RecentRun) => void;
   // optional controlled selected project: either a string (id/name) or an object with id and optional name
-  selectedProject?: { id: string; name?: string } | string;
+  selectedProject?: { id: string; name?: string } | string | null;
+  // explicit flag to indicate the parent is controlling selection (prevents Sidebar from auto-picking a default)
+  selectedProjectControlled?: boolean;
+  // optional refresh hook to allow parents (e.g., after create) to request a refresh
+  onRefresh?: () => void;
 }
 
 const defaultProjects = ["Website Bot", "Infra Upgrade", "Docs Autogen"];
@@ -35,6 +41,39 @@ const defaultRecentRuns: RecentRun[] = [
   { id: "r2", title: "Plan migration steps", status: "running", time: "10m" },
   { id: "r3", title: "Create unit tests", status: "pending", time: "1d" },
 ];
+
+function normalizeProjects(input: any): Project[] {
+  if (!Array.isArray(input)) return [];
+  const out: Project[] = [];
+  for (const item of input) {
+    if (!item && item !== 0) continue;
+    if (typeof item === "string") {
+      out.push({ id: item, name: item });
+      continue;
+    }
+    if (typeof item === "object") {
+      const nameRaw = (item as any).name ?? (item as any).title;
+      const idRaw = (item as any).id ?? nameRaw;
+      const id = idRaw != null ? String(idRaw) : null;
+      const name = nameRaw != null ? String(nameRaw) : id != null ? String(id) : null;
+      if (id && name) out.push({ id, name });
+      continue;
+    }
+    const s = String(item);
+    out.push({ id: s, name: s });
+  }
+  // de-dupe by id while preserving order
+  const seen = new Set<string>();
+  return out.filter((p) => {
+    if (seen.has(p.id)) return false;
+    seen.add(p.id);
+    return true;
+  });
+}
+
+function normalizeProjectsFromStrings(strings: string[]): Project[] {
+  return (strings ?? []).map((s) => ({ id: s, name: s }));
+}
 
 export default function Sidebar({
   initialCollapsed = false,
@@ -45,81 +84,93 @@ export default function Sidebar({
   onSelectRun,
   onSelectProject,
   selectedProject: selectedProjectProp,
+  selectedProjectControlled,
+  onRefresh,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState<boolean>(initialCollapsed);
 
   // Local projects state initialized from prop or defaults; we'll replace with fetched data when available
-  const [projectsState, setProjectsState] = useState<string[]>(projects ?? defaultProjects);
+  const [projectsState, setProjectsState] = useState<Project[]>(normalizeProjectsFromStrings(projects ?? defaultProjects));
   const [isLoadingProjects, setIsLoadingProjects] = useState<boolean>(false);
   const [projectsError, setProjectsError] = useState<string | null>(null);
 
-  // Uncontrolled internal selected project name
-  const [internalSelectedProject, setInternalSelectedProject] = useState<string>(projects[0] ?? "Project");
+  // Consider the component controlled if the explicit flag is present, or if the parent passed a value (including null)
+  // This ensures that when the parent owns selection and passes `null` to mean "no project selected",
+  // Sidebar will not auto-select a default project on mount.
+  const isControlled = selectedProjectControlled ?? (selectedProjectProp !== undefined || selectedProjectProp === null);
 
-  // Consider the component controlled if a selectedProject prop was provided (either string or object)
-  const isControlled = selectedProjectProp !== undefined;
+  // Uncontrolled internal selected project id. If the component is controlled, do not auto-select a default on mount.
+  const [internalSelectedProjectId, setInternalSelectedProjectId] = useState<string>(() => {
+    if (isControlled) return "";
+    const initial = (projects?.[0] ?? defaultProjects[0] ?? "Project").toString();
+    return initial;
+  });
 
-  // Derive a display string for the selection: if the prop is a string, use it; if it's an object, use name ?? id; otherwise fall back to internal selection
-  const displayedProject: string = isControlled
-    ? typeof selectedProjectProp === "string"
-      ? selectedProjectProp
-      : selectedProjectProp?.name ?? selectedProjectProp?.id ?? internalSelectedProject
-    : internalSelectedProject;
+  const selectedProjectId: string | null = useMemo(() => {
+    if (!isControlled) return internalSelectedProjectId;
+    if (typeof selectedProjectProp === "string") return selectedProjectProp;
+    return selectedProjectProp?.id ?? null;
+  }, [internalSelectedProjectId, isControlled, selectedProjectProp]);
 
-  useEffect(() => {
-    let mounted = true;
-    const controller = new AbortController();
+  const selectedProjectObj: Project | null = useMemo(() => {
+    if (!selectedProjectId) return null;
+    return projectsState.find((p) => p.id === selectedProjectId) ?? null;
+  }, [projectsState, selectedProjectId]);
 
-    async function fetchWorkspaces() {
-      setIsLoadingProjects(true);
-      setProjectsError(null);
-      try {
-        // Suggested endpoint: /api/workspaces (adjust if your backend exposes a different path)
-        const res = await fetch("/api/workspaces", { signal: controller.signal });
-        if (!res.ok) {
-          throw new Error(`Failed to fetch workspaces: ${res.status}`);
-        }
-        const data = await res.json();
-        // Defensive parsing: accept array of strings or array of objects with name/id
-        if (!mounted) return;
-        if (!Array.isArray(data)) {
-          throw new Error("Unexpected workspaces response shape");
-        }
-        const names = data
-          .map((item: any) => {
-            if (!item && item !== 0) return null;
-            if (typeof item === "string") return item;
-            if (typeof item === "object") return item.name ?? item.id ?? String(item);
-            return String(item);
-          })
-          .filter(Boolean) as string[];
-
-        if (names.length > 0) {
-          setProjectsState(names);
-          // if uncontrolled, set internal selection to first workspace when current internal selection isn't present
-          if (!isControlled) {
-            setInternalSelectedProject((prev) => (names.includes(prev) ? prev : names[0]));
-          }
-        } else {
-          // keep existing fallback projectsState (do not clear to avoid empty UI)
-          console.warn("/api/workspaces returned no usable entries; keeping local defaults");
-        }
-      } catch (err: any) {
-        if (err.name === "AbortError") return;
-        console.error("Error fetching workspaces:", err);
-        if (mounted) setProjectsError(err?.message ?? "Failed to load projects");
-      } finally {
-        if (mounted) setIsLoadingProjects(false);
-      }
+  const displayedProjectName: string = useMemo(() => {
+    // Show an explicit hint when controlled but no project is selected
+    if (isControlled && (selectedProjectProp == null || selectedProjectId == null || selectedProjectId === "")) {
+      return "Select a project";
     }
 
-    fetchWorkspaces();
+    if (isControlled) {
+      if (typeof selectedProjectProp === "string") {
+        // Could be id or name; if it matches a known id, show name.
+        const found = projectsState.find((p) => p.id === selectedProjectProp);
+        return found?.name ?? selectedProjectProp;
+      }
+      return selectedProjectProp?.name ?? selectedProjectObj?.name ?? selectedProjectProp?.id ?? "Project";
+    }
+    return selectedProjectObj?.name ?? internalSelectedProjectId ?? "Project";
+  }, [internalSelectedProjectId, isControlled, projectsState, selectedProjectObj, selectedProjectProp, selectedProjectId]);
 
-    return () => {
-      mounted = false;
-      controller.abort();
-    };
-    // We intentionally run this once on mount. Do not include projectsState or isControlled in deps.
+  async function fetchWorkspaces(signal?: AbortSignal) {
+    setIsLoadingProjects(true);
+    setProjectsError(null);
+    try {
+      // Suggested endpoint: /api/workspaces (adjust if your backend exposes a different path)
+      const res = await fetch("/api/workspaces", { signal });
+      if (!res.ok) {
+        throw new Error(`Failed to fetch workspaces: ${res.status}`);
+      }
+      const data = await res.json();
+
+      const parsed = normalizeProjects(data);
+      if (parsed.length > 0) {
+        setProjectsState(parsed);
+
+        // If uncontrolled, select first project when current selection isn't present.
+        if (!isControlled) {
+          setInternalSelectedProjectId((prev) => (parsed.some((p) => p.id === prev) ? prev : parsed[0].id));
+        }
+      } else {
+        // keep existing fallback projectsState (do not clear to avoid empty UI)
+        console.warn("/api/workspaces returned no usable entries; keeping local defaults");
+      }
+    } catch (err: any) {
+      if (err?.name === "AbortError") return;
+      console.error("Error fetching workspaces:", err);
+      setProjectsError(err?.message ?? "Failed to load projects");
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  }
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchWorkspaces(controller.signal);
+    return () => controller.abort();
+    // We intentionally run this once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -128,15 +179,28 @@ export default function Sidebar({
   }
 
   function handleProjectChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const p = e.target.value;
-    // Keep select option values as strings. Call onSelectProject with the string value so page handlers
-    // that expect a string continue to work. Consumers that prefer objects can resolve the id/name themselves.
-    if (!isControlled) setInternalSelectedProject(p);
-    onSelectProject?.(p);
+    const projectId = e.target.value;
+    if (!isControlled) setInternalSelectedProjectId(projectId);
+
+    const project = projectsState.find((p) => p.id === projectId);
+    // Prefer passing a Project object when available; still compatible with callers expecting a string.
+    onSelectProject?.(project ?? projectId);
   }
 
   function handleRunClick(run: RecentRun) {
     onSelectRun?.(run);
+  }
+
+  function handleRefreshProjects() {
+    onRefresh?.();
+    fetchWorkspaces();
+  }
+
+  function handleCreateProjectHint() {
+    // Sidebar cannot create projects directly; hint the parent flow.
+    // We intentionally call onSelectProject(null) so the parent can open the create flow or clear selection.
+    onSelectProject?.(null);
+    onRefresh?.();
   }
 
   const containerWidth = collapsed ? "w-20" : "w-64";
@@ -150,35 +214,89 @@ export default function Sidebar({
       <div className="flex items-center justify-between px-3 py-2">
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2">
-            <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-              {!collapsed ? "Projects" : "P"}
-            </div>
+            <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">{!collapsed ? "Projects" : "P"}</div>
+
             {!collapsed ? (
-              <select
-                aria-label="Select project"
-                value={displayedProject}
-                onChange={handleProjectChange}
-                className="bg-transparent text-sm text-gray-700 dark:text-gray-200 focus:outline-none"
-              >
-                {isLoadingProjects ? (
-                  <option disabled>Loading…</option>
-                ) : projectsError ? (
-                  <option disabled>Failed to load projects</option>
-                ) : (
-                  projectsState.map((p) => (
-                    <option key={p} value={p} className="text-sm">
-                      {p}
+              <div className="flex items-center gap-2">
+                <select
+                  aria-label="Select project"
+                  value={selectedProjectId ?? ""}
+                  onChange={handleProjectChange}
+                  className="bg-transparent text-sm text-gray-700 dark:text-gray-200 focus:outline-none"
+                >
+                  {isLoadingProjects ? (
+                    <option disabled value="">
+                      Loading…
                     </option>
-                  ))
-                )}
-              </select>
+                  ) : projectsError ? (
+                    <option disabled value="">
+                      Failed to load projects
+                    </option>
+                  ) : projectsState.length === 0 ? (
+                    <option disabled value="">
+                      No projects — create one
+                    </option>
+                  ) : (
+                    // When controlled and no project is selected, show a placeholder to instruct the user
+                    <>
+                      {isControlled && (selectedProjectId == null || selectedProjectId === "") ? (
+                        <option value="" disabled>
+                          Select a project
+                        </option>
+                      ) : null}
+                      {projectsState.map((p) => (
+                        <option key={p.id} value={p.id} className="text-sm">
+                          {p.name}
+                        </option>
+                      ))}
+                    </>
+                  )}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={handleRefreshProjects}
+                  disabled={isLoadingProjects}
+                  className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+                  title="Refresh projects"
+                  aria-label="Refresh projects"
+                >
+                  <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 text-gray-600 dark:text-gray-300" aria-hidden>
+                    <path
+                      d="M16 10a6 6 0 0 1-10.392 3.978M4 10a6 6 0 0 1 10.392-3.978"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M6 14H3v3M14 6h3V3"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+
+                {projectsState.length === 0 && !isLoadingProjects && !projectsError ? (
+                  <button
+                    type="button"
+                    onClick={handleCreateProjectHint}
+                    className="text-xs px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-500"
+                    title="Create a project"
+                  >
+                    Create
+                  </button>
+                ) : null}
+              </div>
             ) : (
               // collapsed: show small project avatar (first letter)
               <div
                 className="h-8 w-8 rounded bg-indigo-500 text-white flex items-center justify-center text-sm font-medium"
-                title={displayedProject}
+                title={displayedProjectName}
               >
-                {displayedProject?.charAt(0) ?? "P"}
+                {displayedProjectName?.charAt(0) ?? "P"}
               </div>
             )}
           </div>
@@ -243,7 +361,9 @@ export default function Sidebar({
                   {!collapsed && (
                     <div className="flex-1">
                       <div className="text-sm font-medium text-gray-800 dark:text-gray-100">{run.title}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">{run.time} • {run.status}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {run.time} • {run.status}
+                      </div>
                     </div>
                   )}
                   {/* status pill visible even when collapsed */}
@@ -270,9 +390,7 @@ export default function Sidebar({
 
         {/* Footer small actions */}
         <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800">
-          {!collapsed ? (
-            <div className="text-xs text-gray-500 dark:text-gray-400">Shortcuts</div>
-          ) : null}
+          {!collapsed ? <div className="text-xs text-gray-500 dark:text-gray-400">Shortcuts</div> : null}
           <div className="mt-2 flex flex-col gap-2">
             <button className="text-sm text-left px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">New Run</button>
             <button className="text-sm text-left px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">Approvals</button>

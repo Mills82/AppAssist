@@ -21,6 +21,14 @@ import type {
 const STORAGE_KEY = "app:session_token";
 let inMemoryToken: string | null = null;
 
+/**
+ * ApiError is the canonical error type thrown by apiFetch and related helpers.
+ * It always exposes a stable normalized shape accessible via normalized/normalizeApiError:
+ *   { status: number, message: string, body?: unknown }
+ * Conventions:
+ *   - status = 0 indicates a network failure (no HTTP response received).
+ *   - status > 0 maps to HTTP status codes when available.
+ */
 export class ApiError extends Error {
   status: number;
   body?: ApiErrorBody | unknown;
@@ -31,6 +39,47 @@ export class ApiError extends Error {
     this.status = status;
     this.body = body;
   }
+
+  /** Return a stable normalized object that UI code can rely on. */
+  get normalized(): { status: number; message: string; body?: unknown } {
+    return { status: this.status, message: this.message, body: this.body };
+  }
+}
+
+/**
+ * Extract a human-friendly message from various server response shapes.
+ * Returns null when no message-like field can be determined.
+ */
+function extractMessageFromBody(body: unknown): string | null {
+  if (body == null) return null;
+  if (typeof body === "string") return body;
+  if (typeof body === "object") {
+    const b = body as any;
+    if (typeof b.message === "string" && b.message.trim()) return b.message;
+    if (typeof b.detail === "string" && b.detail.trim()) return b.detail;
+    if (typeof b.error === "string" && b.error.trim()) return b.error;
+    if (typeof b.error === "object" && b.error?.message) return String(b.error.message);
+    if (typeof b.msg === "string" && b.msg.trim()) return b.msg;
+    // fallback to a short JSON string for debugging, but limit length
+    try {
+      const s = JSON.stringify(body);
+      return s.length > 0 ? (s.length > 1000 ? s.slice(0, 1000) + "..." : s) : null;
+    } catch (_e) {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Helper to normalize any thrown error into a stable {status, message, body?} shape.
+ * Callers can use this to display consistent UI error messages without probing unknown shapes.
+ */
+export function normalizeApiError(err: unknown): { status: number; message: string; body?: unknown } {
+  if (err instanceof ApiError) return err.normalized;
+  if (err instanceof Error) return { status: 0, message: err.message || "Network request failed", body: undefined };
+  // unknown non-Error value
+  return { status: 0, message: String(err ?? "Unknown error"), body: err };
 }
 
 function isBrowser(): boolean {
@@ -67,25 +116,80 @@ export function clearToken() {
 
 type FetchOpts = Omit<RequestInit, "body"> & { body?: unknown };
 
-async function apiFetch<T = unknown>(path: string, opts: FetchOpts = {}): Promise<T> {
-  const baseRaw = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
-  const base = baseRaw.replace(/\/$/, "");
-  const prefix = base ? `${base}/api/v1` : "/api/v1";
-  const route = path.startsWith("/") ? path : `/${path}`;
-  const url = `${prefix}${route}`;
+function normalizeRoute(path: string): string {
+  // Ensure exactly one leading slash.
+  return path.startsWith("/") ? path : `/${path}`;
+}
 
+function readCookie(name: string): string | null {
+  // Cookie access must be guarded for SSR.
+  if (!isBrowser() || typeof document === "undefined") return null;
+  try {
+    const raw = document.cookie
+      .split(";")
+      .map((s) => s.trim())
+      .find((s) => s.startsWith(`${name}=`));
+    return raw ? raw.split("=").slice(1).join("=") : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+function buildAuthHeaders(existing?: HeadersInit): Record<string, string> {
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(opts.headers as Record<string, string> | undefined),
+    ...(existing as Record<string, string> | undefined),
   };
 
   const token = getToken();
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+    return headers;
+  }
+
+  // Fallback for dev stubs that may store session token in cookies.
+  // We avoid overwriting Authorization if present, and only send this when no stored token.
+  const cookieToken = readCookie(STORAGE_KEY);
+  if (cookieToken && !headers["Authorization"] && !headers["authorization"]) {
+    headers["x-session-token"] = cookieToken;
+  }
+
+  return headers;
+}
+
+function buildApiV1Url(path: string): string {
+  const baseRaw = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+  const base = baseRaw.replace(/\/$/, "");
+  const route = normalizeRoute(path);
+
+  // If unset, rely on Next.js routing/rewrite and keep URL relative.
+  if (!base) return `/api/v1${route}`;
+
+  // If base already includes /api/v1, don't append it again.
+  const prefix = base.endsWith("/api/v1") ? base : `${base}/api/v1`;
+  return `${prefix}${route}`;
+}
+
+function defaultCredentialsForBase(baseRaw: string | undefined, existing?: RequestCredentials): RequestCredentials {
+  // Relative URLs should send same-origin cookies (dev stubs + Next rewrites).
+  // Absolute API bases should omit credentials by default to avoid accidental cross-site cookie use.
+  const base = (baseRaw ?? "").replace(/\/$/, "");
+  return existing ?? (base ? "omit" : "same-origin");
+}
+
+async function apiFetch<T = unknown>(path: string, opts: FetchOpts = {}): Promise<T> {
+  const baseRaw = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+  const url = buildApiV1Url(path);
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...buildAuthHeaders(opts.headers),
+  };
 
   const fetchOpts: RequestInit = {
     method: opts.method ?? (opts.body ? "POST" : "GET"),
     headers,
-    // allow callers to pass other fetch options (credentials, mode, etc.)
+    credentials: defaultCredentialsForBase(baseRaw, opts.credentials),
+    // allow callers to pass other fetch options (mode, cache, signal, etc.)
     ...(opts as RequestInit),
   };
 
@@ -97,18 +201,34 @@ async function apiFetch<T = unknown>(path: string, opts: FetchOpts = {}): Promis
     }
   }
 
-  const res = await fetch(url, fetchOpts);
-  const text = await res.text();
+  let res: Response;
+  try {
+    res = await fetch(url, fetchOpts);
+  } catch (err) {
+    // Network/TypeError failures should be normalized so UI can distinguish from HTTP errors.
+    throw new ApiError((err as Error)?.message || "Network request failed", 0, err);
+  }
+
+  let text = "";
+  try {
+    text = await res.text();
+  } catch (_e) {
+    text = "";
+  }
+
   let json: unknown = null;
   try {
     json = text ? JSON.parse(text) : null;
   } catch (_e) {
-    // non-json response
+    // non-json response; keep raw text
     json = text;
   }
 
   if (!res.ok) {
-    throw new ApiError(`Request failed: ${res.status} ${res.statusText}`, res.status, json as ApiErrorBody | unknown);
+    // Try to surface a meaningful message from server-provided JSON when possible
+    const extracted = extractMessageFromBody(json);
+    const msg = extracted ?? `${res.status} ${res.statusText}`;
+    throw new ApiError(msg, res.status, json as ApiErrorBody | unknown);
   }
 
   return json as T;
@@ -192,14 +312,6 @@ export type RunStreamController = {
   stop: () => void;
   reconnect: () => void;
 };
-
-function buildApiV1Url(path: string): string {
-  const baseRaw = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
-  const base = baseRaw.replace(/\/$/, "");
-  const prefix = base ? `${base}/api/v1` : "/api/v1";
-  const route = path.startsWith("/") ? path : `/${path}`;
-  return `${prefix}${route}`;
-}
 
 function escapeQueryValue(value: string): string {
   try {
@@ -306,7 +418,7 @@ function mapRawEventToPatch(frame: SSEFrame): RunStatePatch | null {
     } as RunStatePatch;
   }
 
-  if (ev === "error" || ev === "run:error" || ev === "run:error") {
+  if (ev === "error" || ev === "run:error") {
     // Ensure error events normalize to SSEErrorEvent so the accumulator can mark status='error'
     const errPayload = typeof data === "object" && data != null ? data : { message: String(data) };
     return {
@@ -316,7 +428,7 @@ function mapRawEventToPatch(frame: SSEFrame): RunStatePatch | null {
     } as RunStatePatch;
   }
 
-  if (ev === "done" || ev === "run:done" || ev === "run:done") {
+  if (ev === "done" || ev === "run:done") {
     const reason = typeof data === "object" && data != null ? (data as any).reason ?? undefined : undefined;
     return {
       type: "done",
@@ -381,12 +493,11 @@ export function subscribeToRun(runId: string, callbacks: RunStreamCallbacks): Ru
     const qs = lastSeenEventId ? `?last_event_id=${escapeQueryValue(lastSeenEventId)}` : "";
     const url = buildApiV1Url(`/runs/${escapeQueryValue(runId)}/stream${qs}`);
 
+    const baseRaw = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
     const headers: Record<string, string> = {
       Accept: "text/event-stream",
+      ...buildAuthHeaders(undefined),
     };
-
-    const token = getToken();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
 
     try {
       const res = await fetch(url, {
@@ -394,11 +505,15 @@ export function subscribeToRun(runId: string, callbacks: RunStreamCallbacks): Ru
         headers,
         signal: abortController.signal,
         cache: "no-store",
+        credentials: defaultCredentialsForBase(baseRaw, undefined),
       });
 
       if (!res.ok) {
         const text = await res.text().catch(() => "");
-        throw new ApiError(`SSE request failed: ${res.status} ${res.statusText}`, res.status, text);
+        const parsed = safeJsonParse(text);
+        const extracted = extractMessageFromBody(parsed);
+        const msg = extracted ?? `${res.status} ${res.statusText}`;
+        throw new ApiError(`SSE request failed: ${msg}`, res.status, parsed);
       }
 
       if (!res.body) {
@@ -477,7 +592,9 @@ export function subscribeToRun(runId: string, callbacks: RunStreamCallbacks): Ru
       // Abort is an expected stop path.
       if ((err as any)?.name === "AbortError") return;
 
-      callbacks.onError?.(err as Error);
+      // Normalize network errors similarly to apiFetch (status=0 sentinel).
+      const normalized = err instanceof ApiError ? err : new ApiError((err as Error)?.message || "Network request failed", 0, err);
+      callbacks.onError?.(normalized);
 
       // Auto-reconnect for transient errors.
       const waitMs = computeBackoffMs(reconnectAttempt++);

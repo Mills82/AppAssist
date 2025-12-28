@@ -23,6 +23,10 @@ export interface CreateProjectFormProps {
   // Prefer onSuccess as the canonical callback; call both when present so
   // existing callers using either prop will continue to work.
   onCreate?: (project: Project) => void;
+  // Optional hooks for parent components to refresh lists or close modals/popovers.
+  // Called after onSuccess/onCreate when a project is successfully created.
+  onRefresh?: () => void;
+  onClose?: () => void;
   className?: string;
   initialValues?: Partial<{ name: string; description: string }>;
 }
@@ -30,6 +34,8 @@ export interface CreateProjectFormProps {
 export default function CreateProjectForm({
   onSuccess,
   onCreate,
+  onRefresh,
+  onClose,
   className = "",
   initialValues = {},
 }: CreateProjectFormProps) {
@@ -108,6 +114,9 @@ export default function CreateProjectForm({
       // onSuccess is considered the canonical name going forward.
       onSuccess?.(project);
       onCreate?.(project);
+      // Allow parents to refresh project lists and close dialogs/popovers after a successful create.
+      onRefresh?.();
+      onClose?.();
     } catch (err: any) {
       setError(err?.message ?? String(err) ?? "Failed to create project");
     } finally {

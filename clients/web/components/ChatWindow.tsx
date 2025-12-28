@@ -333,6 +333,12 @@ export default function ChatWindow({
   };
 
   const handleSend = async () => {
+    if (!selectedProject?.id) {
+      // Defensive: block programmatic sends (keyboard/tests) when no project is selected.
+      appendMessage('system', 'Please select or create a project in the Sidebar before sending.');
+      setIsSending(false);
+      return;
+    }
     if (!input.trim()) return;
     const userText = input.trim();
     setInput('');
@@ -348,6 +354,7 @@ export default function ChatWindow({
       }
 
       const body: any = { text: userText };
+      // API compatibility: when a project is selected, include its identifier in the request payload.
       if (selectedProject?.id) body.projectId = selectedProject.id;
 
       const res = await postConversation(body);
@@ -488,12 +495,28 @@ export default function ChatWindow({
 
       {/* Input area */}
       <div className="border-t border-slate-100 dark:border-slate-800 px-4 py-3">
+        {!selectedProject?.id && (
+          <div
+            id="chat-project-required"
+            className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+            role="status"
+          >
+            Select or create a project in the Sidebar to start a run.
+          </div>
+        )}
         <div className="flex items-center gap-3">
           <textarea
             aria-label="Message input"
-            placeholder="Type a message and press Send"
+            aria-disabled={!selectedProject?.id}
+            aria-describedby={!selectedProject?.id ? 'chat-project-required' : undefined}
+            placeholder={
+              selectedProject?.id
+                ? 'Type a message and press Send'
+                : 'Select or create a project in the Sidebar to start a run'
+            }
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            disabled={!selectedProject?.id}
             rows={1}
             className="min-h-[44px] max-h-36 w-full resize-none rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-200"
             onKeyDown={(e) => {
@@ -508,9 +531,9 @@ export default function ChatWindow({
             <button
               type="button"
               onClick={handleSend}
-              disabled={!input.trim() || isSending}
+              disabled={!input.trim() || isSending || !selectedProject?.id}
               className={`rounded-md px-3 py-2 text-sm font-medium ${
-                !input.trim() || isSending
+                !input.trim() || isSending || !selectedProject?.id
                   ? 'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400 cursor-not-allowed'
                   : 'bg-indigo-600 text-white hover:bg-indigo-700'
               }`}

@@ -1,19 +1,34 @@
 # runtimes/path_safety.py
-"""
-Helpers to safely resolve and validate filesystem paths against a selected
-project_root. Note: resolve_safe_path now returns a pathlib.Path (absolute,
-resolved) instead of a string; callers should expect a Path object.
+"""runtimes.path_safety
 
-For callers that still expect a string path, a small compatibility wrapper
-resolve_safe_path_str(...) is provided which returns the resolved path as a
-string. The resolve_to_repo_path alias continues to exist for backward
-compatibility.
+Helpers to safely resolve and validate filesystem paths against a selected
+project_root.
+
+Key APIs:
+- resolve_within_root(project_root, rel_path) -> pathlib.Path:
+  Preferred strict API for write entrypoints. It *rejects* absolute paths and any
+  path containing ".." traversal parts, resolves under project_root (following
+  symlinks), and guarantees the result is an absolute Path within project_root.
+
+- resolve_safe_path(target_path, project_root) -> pathlib.Path:
+  Backwards-compatible resolver that accepts absolute or relative paths. If the
+  input is relative, it is interpreted as relative to project_root. The resolved
+  path must be within project_root.
+
+Note: resolution uses Path.resolve() where possible, which follows symlinks.
+Containment checks are performed on the resolved path to prevent escapes via
+symlinks.
+
+For callers that still expect a string path, resolve_safe_path_str(...) is
+provided, returning the resolved path as a string. The resolve_to_repo_path alias
+continues to exist for backward compatibility.
 """
+
 from __future__ import annotations
 
 import glob
 from pathlib import Path
-from typing import Union, List
+from typing import List, Union
 
 
 def _to_path(p: Union[str, Path]) -> Path:
@@ -45,6 +60,40 @@ def validate_within_root(target_path: Union[str, Path], project_root: Union[str,
         return False
 
 
+def resolve_within_root(project_root: Path, rel_path: str) -> Path:
+    """Resolve a repo-relative path within project_root.
+
+    This is the preferred strict API for write entrypoints: it rejects absolute
+    paths and any path containing '..' traversal parts, resolves under
+    project_root (following symlinks), and guarantees the returned Path is
+    absolute and contained within project_root.
+
+    Raises ValueError with deterministic messages on rejection.
+    """
+    root = Path(project_root).resolve()
+    p = Path(rel_path)
+
+    if p.is_absolute():
+        raise ValueError(f"Absolute paths are not allowed: {rel_path}")
+    if any(part == ".." for part in p.parts):
+        raise ValueError(f"Path traversal '..' is not allowed: {rel_path}")
+
+    candidate = root / p
+    try:
+        resolved = candidate.resolve()
+    except Exception:
+        resolved = candidate.absolute()
+
+    try:
+        resolved.relative_to(root)
+    except Exception:
+        raise ValueError(
+            f"Refusing path outside project root: attempted='{resolved}' project_root='{root}'"
+        )
+
+    return resolved
+
+
 def resolve_safe_path(target_path: Union[str, Path], project_root: Union[str, Path]) -> Path:
     """
     Resolve `target_path` to an absolute pathlib.Path that is guaranteed to be within
@@ -69,11 +118,14 @@ def resolve_safe_path(target_path: Union[str, Path], project_root: Union[str, Pa
     try:
         resolved.relative_to(root)
     except Exception:
-        raise ValueError(f"Refusing path outside project root: attempted='{resolved}' project_root='{root}'")
+        raise ValueError(
+            f"Refusing path outside project root: attempted='{resolved}' project_root='{root}'"
+        )
     return resolved
 
 
-# Backwards/transition alias so callers can import either name
+# Backwards/transition alias so callers can import either name.
+# Prefer resolve_within_root(...) for strict write entrypoints.
 resolve_to_repo_path = resolve_safe_path
 
 
@@ -128,8 +180,8 @@ def resolve_glob_within_root(project_root: Union[str, Path], pattern: str) -> Li
 
     # Non-glob single-file path: validate containment and return single entry
     if not contains_glob:
-        # Use resolve_safe_path to validate containment and raise useful errors
-        abs_path = resolve_safe_path(pattern, root)
+        # Use strict resolver for deterministic rejection of absolute/traversal inputs.
+        abs_path = resolve_within_root(root, pattern)
         rel = _rel_as_posix(abs_path)
         return [rel]
 

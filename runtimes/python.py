@@ -7,31 +7,15 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Union
 
-try:
-    from runtimes.base import run_command as _rc  # normalized runner
-except Exception:  # pragma: no cover
-    import subprocess
-    def _rc(cmd: Union[str, Sequence[str]], *, cwd: Optional[str] = None,
-            timeout: Optional[float] = None, **_) -> Dict[str, object]:
-        completed = subprocess.run(
-            cmd, cwd=cwd, timeout=timeout, text=True,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
-        return {
-            "returncode": completed.returncode,
-            "stdout": completed.stdout,
-            "stderr": completed.stderr,
-            "timed_out": False,
-            "missing_executable": False,
-            "elapsed_sec": None,
-            "ok": completed.returncode == 0,
-        }
+from runtimes.runner import run_command as _rc
 
 _TAIL = int(os.getenv("AIDEV_PY_LOG_TAIL", "2000"))
+
 
 def _tail(s: str, n: int = _TAIL) -> str:
     s = s or ""
     return s if len(s) <= n else s[-n:]
+
 
 class PythonTools:
     """
@@ -149,7 +133,6 @@ class PythonTools:
             return ["ruff", "check", "."], "ruff"
         if shutil.which("flake8"):
             return ["flake8", "."], "flake8"
-        # try module form as a fallback (works in local venv)
         return (self._module_cmd("ruff", "check", "."), "ruff") if self._importable("ruff") else \
                ((self._module_cmd("flake8", "."), "flake8") if self._importable("flake8") else (None, None))
 

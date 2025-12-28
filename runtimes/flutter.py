@@ -5,26 +5,18 @@ import os
 import shutil
 import time
 from pathlib import Path
-from typing import List, Optional, Sequence, Union, Dict
+from typing import List, Optional, Dict
 
-try:
-    from runtimes.base import BaseRuntime, run_command
-except Exception:  # minimal shim
-    class BaseRuntime:  # type: ignore
-        name = "flutter"
-        def run_checks(self, project_root: Path) -> dict:  # pragma: no cover
-            raise NotImplementedError
-    def run_command(cmd, cwd=None, timeout=None, env=None, use_shell=False):  # type: ignore
-        import subprocess
-        c = subprocess.run(cmd, cwd=cwd, timeout=timeout, text=True,
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        return {"returncode": c.returncode, "stdout": c.stdout, "stderr": c.stderr, "timed_out": False, "ok": c.returncode == 0}
+from runtimes.base import BaseRuntime
+from runtimes.runner import run_command
 
 _TAIL = int(os.getenv("AIDEV_FLUTTER_LOG_TAIL", "2000"))
+
 
 def _tail(s: str, n: int = _TAIL) -> str:
     s = s or ""
     return s if len(s) <= n else s[-n:]
+
 
 class FlutterTools:
     """
@@ -46,28 +38,47 @@ class FlutterTools:
         return shutil.which(exe) is not None
 
     def format(self) -> dict:
-        # Prefer 'dart format'; fall back to 'flutter format'
         if self._has("dart"):
-            res = run_command(["dart", "format", "-o", "write", "."], cwd=str(self.root),
-                              timeout=float(os.getenv("AIDEV_FLUTTER_FORMAT_TIMEOUT", "120")))
+            res = run_command(
+                ["dart", "format", "-o", "write", "."],
+                cwd=str(self.root),
+                timeout=float(os.getenv("AIDEV_FLUTTER_FORMAT_TIMEOUT", "120")),
+            )
         elif self._has("flutter"):
-            res = run_command(["flutter", "format", "."], cwd=str(self.root),
-                              timeout=float(os.getenv("AIDEV_FLUTTER_FORMAT_TIMEOUT", "120")))
+            res = run_command(
+                ["flutter", "format", "."],
+                cwd=str(self.root),
+                timeout=float(os.getenv("AIDEV_FLUTTER_FORMAT_TIMEOUT", "120")),
+            )
         else:
             return {"step": "format", "tool": "dart/flutter", "present": False, "ran": False, "ok": True, "note": "missing"}
+
         return {
-            "step": "format", "tool": "dart/flutter", "present": True, "ran": True,
-            "ok": res.get("returncode") == 0, "stdout": _tail(res.get("stdout") or ""), "stderr": _tail(res.get("stderr") or "")
+            "step": "format",
+            "tool": "dart/flutter",
+            "present": True,
+            "ran": True,
+            "ok": res.get("returncode") == 0 and not bool(res.get("timed_out")),
+            "stdout": _tail(res.get("stdout") or ""),
+            "stderr": _tail(res.get("stderr") or ""),
         }
 
     def lint(self) -> dict:
         if not self._has("flutter"):
             return {"step": "lint", "tool": "flutter", "present": False, "ran": False, "ok": True, "note": "missing"}
-        res = run_command(["flutter", "analyze", "--no-pub"], cwd=str(self.root),
-                          timeout=float(os.getenv("AIDEV_FLUTTER_ANALYZE_TIMEOUT", "180")))
+        res = run_command(
+            ["flutter", "analyze", "--no-pub"],
+            cwd=str(self.root),
+            timeout=float(os.getenv("AIDEV_FLUTTER_ANALYZE_TIMEOUT", "180")),
+        )
         return {
-            "step": "lint", "tool": "flutter", "present": True, "ran": True,
-            "ok": res.get("returncode") == 0, "stdout": _tail(res.get("stdout") or ""), "stderr": _tail(res.get("stderr") or "")
+            "step": "lint",
+            "tool": "flutter",
+            "present": True,
+            "ran": True,
+            "ok": res.get("returncode") == 0 and not bool(res.get("timed_out")),
+            "stdout": _tail(res.get("stdout") or ""),
+            "stderr": _tail(res.get("stderr") or ""),
         }
 
     def test(self) -> dict:
@@ -76,11 +87,19 @@ class FlutterTools:
         has_tests = (self.root / "test").exists() and any((self.root / "test").rglob("*_test.dart"))
         if not has_tests:
             return {"step": "test", "tool": "flutter", "present": True, "ran": False, "ok": True, "note": "no tests"}
-        res = run_command(["flutter", "test"], cwd=str(self.root),
-                          timeout=float(os.getenv("AIDEV_FLUTTER_TEST_TIMEOUT", "600")))
+        res = run_command(
+            ["flutter", "test"],
+            cwd=str(self.root),
+            timeout=float(os.getenv("AIDEV_FLUTTER_TEST_TIMEOUT", "600")),
+        )
         return {
-            "step": "test", "tool": "flutter", "present": True, "ran": True,
-            "ok": res.get("returncode") == 0, "stdout": _tail(res.get("stdout") or ""), "stderr": _tail(res.get("stderr") or "")
+            "step": "test",
+            "tool": "flutter",
+            "present": True,
+            "ran": True,
+            "ok": res.get("returncode") == 0 and not bool(res.get("timed_out")),
+            "stdout": _tail(res.get("stdout") or ""),
+            "stderr": _tail(res.get("stderr") or ""),
         }
 
 
@@ -90,7 +109,6 @@ class FlutterRuntime(BaseRuntime):
       1) flutter pub get
       2) flutter analyze --no-pub
       3) flutter test  (or skip if no tests)
-         (As a light alternative, you can keep Tools-only via detect_runtimes)
     """
     name = "flutter"
 
@@ -115,23 +133,36 @@ class FlutterRuntime(BaseRuntime):
             tout = bool(res.get("timed_out"))
             ok = (rc == 0) and (not tout)
             ok_all = ok_all and ok
-            logs.append(f"\n=== {title} (rc={rc}, timeout={tout}) ===\n{_tail(res.get('stdout') or '')}\n{_tail(res.get('stderr') or '')}")
+            logs.append(
+                f"\n=== {title} (rc={rc}, timeout={tout}) ===\n"
+                f"{_tail(res.get('stdout') or '')}\n"
+                f"{_tail(res.get('stderr') or '')}"
+            )
 
         # 1) pub get
-        res = run_command(["flutter", "pub", "get"], cwd=str(self.root),
-                          timeout=float(os.getenv("AIDEV_FLUTTER_PUB_TIMEOUT", "180")))
+        res = run_command(
+            ["flutter", "pub", "get"],
+            cwd=str(self.root),
+            timeout=float(os.getenv("AIDEV_FLUTTER_PUB_TIMEOUT", "180")),
+        )
         add("flutter pub get", res)
 
         # 2) analyze
-        res = run_command(["flutter", "analyze", "--no-pub"], cwd=str(self.root),
-                          timeout=float(os.getenv("AIDEV_FLUTTER_ANALYZE_TIMEOUT", "240")))
+        res = run_command(
+            ["flutter", "analyze", "--no-pub"],
+            cwd=str(self.root),
+            timeout=float(os.getenv("AIDEV_FLUTTER_ANALYZE_TIMEOUT", "240")),
+        )
         add("flutter analyze --no-pub", res)
 
         # 3) tests (skip if none)
         has_tests = (self.root / "test").exists() and any((self.root / "test").rglob("*_test.dart"))
         if has_tests:
-            res = run_command(["flutter", "test"], cwd=str(self.root),
-                              timeout=float(os.getenv("AIDEV_FLUTTER_TEST_TIMEOUT", "600")))
+            res = run_command(
+                ["flutter", "test"],
+                cwd=str(self.root),
+                timeout=float(os.getenv("AIDEV_FLUTTER_TEST_TIMEOUT", "600")),
+            )
             add("flutter test", res)
         else:
             logs.append("\n=== flutter test ===\n(no tests; skipped)")
